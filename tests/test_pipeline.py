@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 import ra_task.pipeline as pipeline
 from ra_task.pipeline import apply_adjudications, verify_outputs
@@ -49,3 +50,30 @@ def test_adjudication_payload_contains_both_blind_codings() -> None:
     assert context["primary"]["score"] == 1
     assert context["audit"]["score"] == 2
     assert context["primary"]["reason"] == "工具仅辅助"
+
+
+def test_annual_validation_recomputes_values_instead_of_only_checking_bounds() -> None:
+    assert hasattr(pipeline, "validate_annual_consistency")
+    ads = pd.DataFrame({"canonical_id": ["1", "2"], "year": [2025, 2025]})
+    labels = pd.DataFrame({"canonical_id": ["1", "2"], "score": [0, 2]})
+    annual = pipeline.annual_summary(ads, labels)
+    annual.loc[0, "share_score_ge_2"] = 0.75
+    with pytest.raises(ValueError, match="annual summary"):
+        pipeline.validate_annual_consistency(ads, labels, annual)
+
+
+def test_output_transaction_restores_previous_artifact_after_failure(tmp_path: Path) -> None:
+    assert hasattr(pipeline, "OutputTransaction")
+    artifact = tmp_path / "result.txt"
+    artifact.write_text("stable", encoding="utf-8")
+    with pytest.raises(RuntimeError):
+        with pipeline.OutputTransaction([artifact]):
+            artifact.write_text("partial", encoding="utf-8")
+            raise RuntimeError("render failed")
+    assert artifact.read_text(encoding="utf-8") == "stable"
+
+
+def test_offline_mode_fails_before_outputs_when_formal_cache_is_absent(tmp_path: Path) -> None:
+    assert hasattr(pipeline, "require_formal_cache")
+    with pytest.raises(RuntimeError, match="formal v2 cache"):
+        pipeline.require_formal_cache(tmp_path / "missing.jsonl", offline=True)

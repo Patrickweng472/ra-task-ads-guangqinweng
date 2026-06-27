@@ -57,3 +57,10 @@ def test_overlapping_review_rules_fail_instead_of_using_file_order(tmp_path: Pat
     ]).to_csv(aliases, index=False)
     with pytest.raises(ValueError, match="multiple reviewed rules"):
         match_companies(ads, firms, aliases)
+
+
+def test_all_reviewed_rules_have_provenance() -> None:
+    aliases = pd.read_csv("config/company_aliases.csv", dtype=str, keep_default_na=False)
+    required = ["reviewer", "reviewed_at", "review_basis"]
+    assert set(required).issubset(aliases.columns)
+    assert not aliases[required].eq("").any().any()
