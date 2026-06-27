@@ -36,6 +36,37 @@ def test_up_to_five_exact_supporting_phrases_are_allowed() -> None:
     assert validate_batch(payload, {"1": source})[0].evidence == evidence
 
 
+def test_punctuation_normalized_evidence_is_repaired_to_exact_source_span() -> None:
+    source = (
+        "岗位：天猫运营\n"
+        "描述：熟悉淘宝店铺运营广告投放的形式与方法,"
+        "对淘宝钻石展位(CPM),直通车(CPC),淘宝各项活动平台,如聚划算,淘金币,相关类目主题活动等熟悉\n"
+        "标签：电商"
+    )
+    model_evidence = (
+        "熟悉淘宝店铺运营广告投放的形式与方法，"
+        "对淘宝钻石展位（CPM），直通车（CPC），淘宝各项活动平台，"
+        "如聚划算，淘金币，相关类目主题活动等熟悉"
+    )
+    payload = json.dumps(
+        {
+            "items": [
+                {
+                    "canonical_id": "1",
+                    "score": 1,
+                    "evidence": [model_evidence],
+                    "reason": "广告投放工具是运营辅助能力，而非技术开发核心产出",
+                    "confidence": "high",
+                }
+            ]
+        },
+        ensure_ascii=False,
+    )
+    repaired = validate_batch(payload, {"1": source})[0].evidence[0]
+    assert repaired in source
+    assert repaired == source.split("描述：", 1)[1].split("\n标签：", 1)[0]
+
+
 def test_v2_prompt_defines_ai_only_boundary_and_confidence() -> None:
     rubric = yaml.safe_load(Path("config/ai_rubric.yaml").read_text(encoding="utf-8"))
     prompt = llm._system_prompt(rubric, thinking=False)
