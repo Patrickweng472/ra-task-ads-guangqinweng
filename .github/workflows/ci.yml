@@ -13,8 +13,12 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
+      - uses: quarto-dev/quarto-actions/setup@v2
       - run: uv sync --frozen --all-groups
-      - run: uv run pytest
+      - name: Rebuild all formal outputs without network
+        run: uv run ra-task run --offline
+      - name: Test with coverage gate
+        run: uv run pytest --cov=ra_task --cov-report=term-missing --cov-fail-under=80
       - name: Secret pattern scan
         run: |
           if git grep -nE 'sk-[A-Za-z0-9]{20,}' -- ':!data/raw/**'; then
@@ -27,4 +31,3 @@ jobs:
         with:
           name: ra-task-submission
           path: dist/ra_task_submission.zip
-

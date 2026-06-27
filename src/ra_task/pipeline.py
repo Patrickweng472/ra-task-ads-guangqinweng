@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,7 +15,7 @@ import pandas as pd
 
 from .analysis import annual_summary, plot_annual, quadratic_weighted_kappa
 from .cleaning import TOKEN_RE, clean_ads, clean_firms
-from .llm_labeling import PROMPT_VERSION, content_text, label_with_deepseek, provisional_labels, rule_score
+from .llm_labeling import PROMPT_VERSION, content_text, label_with_deepseek, rule_score, validate_batch
 from .matching import match_companies
 
 
@@ -29,6 +30,83 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+class OutputTransaction:
+    """Restore generated artifacts if a pipeline run fails partway through."""
+
+    def __init__(self, paths: list[Path]):
+        self.paths = [Path(path) for path in paths]
+        self._temporary: tempfile.TemporaryDirectory[str] | None = None
+        self._existing: dict[Path, tuple[Path, bool]] = {}
+
+    def __enter__(self) -> "OutputTransaction":
+        self._temporary = tempfile.TemporaryDirectory(prefix="ra-task-rollback-")
+        backup_root = Path(self._temporary.name)
+        for index, path in enumerate(self.paths):
+            if not path.exists():
+                continue
+            backup = backup_root / str(index)
+            if path.is_dir():
+                shutil.copytree(path, backup)
+                self._existing[path] = (backup, True)
+            else:
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, backup)
+                self._existing[path] = (backup, False)
+        return self
+
+    def __exit__(self, exc_type: object, exc: BaseException | None, traceback: object) -> bool:
+        if exc is not None:
+            for path in self.paths:
+                if path.is_dir():
+                    shutil.rmtree(path)
+                elif path.exists():
+                    path.unlink()
+            for path, (backup, is_directory) in self._existing.items():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                if is_directory:
+                    shutil.copytree(backup, path)
+                else:
+                    shutil.copy2(backup, path)
+        if self._temporary is not None:
+            self._temporary.cleanup()
+        return False
+
+
+def require_formal_cache(cache_path: Path, *, offline: bool) -> None:
+    """Fail before output mutation when an offline formal cache is unavailable."""
+    if offline and (not cache_path.exists() or cache_path.stat().st_size == 0):
+        raise RuntimeError(f"Offline formal v2 cache is missing: {cache_path}")
+
+
+def validate_annual_consistency(ads: pd.DataFrame, labels: pd.DataFrame, annual: pd.DataFrame) -> None:
+    """Recompute every annual statistic and reject stale or edited summaries."""
+    expected = annual_summary(ads, labels.assign(score=labels["score"].astype(int)))
+    try:
+        pd.testing.assert_frame_equal(
+            annual.reset_index(drop=True),
+            expected.reset_index(drop=True),
+            check_dtype=False,
+            rtol=1e-12,
+            atol=1e-12,
+        )
+    except AssertionError as exc:
+        raise ValueError(f"annual summary does not match source labels: {exc}") from exc
+
+
+def calculate_reliability_metrics(comparison: pd.DataFrame) -> dict:
+    """Compute test-retest metrics directly from the item-level audit ledger."""
+    primary = comparison["primary_score"].astype(int)
+    audit = comparison["audit_score"].astype(int)
+    return {
+        "sample_size": len(comparison),
+        "disagreements": int(primary.ne(audit).sum()),
+        "exact_agreement": float(primary.eq(audit).mean()),
+        "within_one_agreement": float(primary.sub(audit).abs().le(1).mean()),
+        "binary_agreement_score_ge_2": float(primary.ge(2).eq(audit.ge(2)).mean()),
+        "quadratic_weighted_kappa": quadratic_weighted_kappa(primary.tolist(), audit.tolist()),
+    }
 
 
 def _report(stats: dict, matches: pd.DataFrame, labels: pd.DataFrame, annual: pd.DataFrame, reliability: dict) -> str:
@@ -193,22 +271,16 @@ def run_reliability_audit(ads: pd.DataFrame, labels: pd.DataFrame, seed: int, *,
     else:
         comparison["adjudicated_score"] = pd.NA
         comparison["adjudication_reason"] = ""
-    primary = comparison["primary_score"].astype(int).tolist()
-    secondary = comparison["audit_score"].astype(int).tolist()
+    agreement = calculate_reliability_metrics(comparison)
     metrics = {
         "status": "completed",
         "method": "same_model_blind_retest_with_contextual_adjudication",
         "independent_human_reliability": False,
-        "sample_size": len(comparison),
         "targeted_cases": int(comparison["selection_reason"].ne("stratified_fill").sum()),
         "low_confidence_cases": int(comparison["selection_reason"].str.contains("low_confidence").sum()),
         "rule_model_threshold_conflicts": int(comparison["selection_reason"].str.contains("rule_model_threshold_conflict").sum()),
         "strict_score3_cases": int(comparison["selection_reason"].str.contains("strict_score3").sum()),
-        "disagreements": int((comparison["primary_score"] != comparison["audit_score"]).sum()),
-        "exact_agreement": float((comparison["primary_score"] == comparison["audit_score"]).mean()),
-        "within_one_agreement": float(((comparison["primary_score"] - comparison["audit_score"]).abs() <= 1).mean()),
-        "binary_agreement_score_ge_2": float(((comparison["primary_score"] >= 2) == (comparison["audit_score"] >= 2)).mean()),
-        "quadratic_weighted_kappa": quadratic_weighted_kappa(primary, secondary),
+        **agreement,
     }
     Path("artifacts/review").mkdir(parents=True, exist_ok=True)
     _write_csv(comparison, Path("artifacts/review/reliability_sample.csv"))
@@ -233,7 +305,94 @@ def apply_adjudications(labels: pd.DataFrame, comparison: pd.DataFrame, adjudica
     return enriched
 
 
+def _snapshot_previous_version() -> None:
+    """Preserve v1 result artifacts once before the v2 formal rerun."""
+    current = Path("outputs/ai_scores.csv")
+    if not current.exists():
+        return
+    existing = pd.read_csv(current, dtype=str, keep_default_na=False)
+    versions = set(existing.get("prompt_version", pd.Series(dtype=str)))
+    if versions != {"1.0.0"}:
+        return
+    baseline = Path("artifacts/baselines/v1")
+    if baseline.exists():
+        return
+    baseline.mkdir(parents=True, exist_ok=True)
+    sources = [
+        Path("outputs/ai_scores.csv"),
+        Path("outputs/annual_ai_share.csv"),
+        Path("artifacts/review/reliability_sample.csv"),
+        Path("artifacts/review/reliability_metrics.json"),
+        Path("artifacts/llm/labels_cache.jsonl"),
+        Path("artifacts/llm/audit_cache.jsonl"),
+        Path("artifacts/llm/adjudication_cache.jsonl"),
+    ]
+    for source in sources:
+        if source.exists():
+            shutil.copy2(source, baseline / source.name)
+
+
+def _write_version_comparison(labels: pd.DataFrame, annual: pd.DataFrame) -> dict:
+    """Write item- and year-level v1-to-v2 sensitivity artifacts."""
+    baseline_dir = Path("artifacts/baselines/v1")
+    old_labels_path = baseline_dir / "ai_scores.csv"
+    old_annual_path = baseline_dir / "annual_ai_share.csv"
+    if not old_labels_path.exists() or not old_annual_path.exists():
+        return {"available": False}
+    old_labels = pd.read_csv(old_labels_path, dtype=str, keep_default_na=False)
+    comparison = old_labels[["canonical_id", "score", "evidence", "reason"]].rename(
+        columns={"score": "v1_score", "evidence": "v1_evidence", "reason": "v1_reason"}
+    ).merge(
+        labels[["canonical_id", "score", "evidence", "reason"]].rename(
+            columns={"score": "v2_score", "evidence": "v2_evidence", "reason": "v2_reason"}
+        ),
+        on="canonical_id",
+        validate="one_to_one",
+    )
+    comparison["score_changed"] = comparison["v1_score"].astype(int).ne(comparison["v2_score"].astype(int))
+    comparison["crossed_main_threshold"] = comparison["v1_score"].astype(int).ge(2).ne(comparison["v2_score"].astype(int).ge(2))
+    _write_csv(comparison, Path("artifacts/review/v1_v2_label_comparison.csv"))
+    old_annual = pd.read_csv(old_annual_path)
+    annual_comparison = old_annual[["year", "share_score_ge_2", "share_score_ge_1", "share_score_eq_3"]].rename(
+        columns={column: f"v1_{column}" for column in ["share_score_ge_2", "share_score_ge_1", "share_score_eq_3"]}
+    ).merge(
+        annual[["year", "share_score_ge_2", "share_score_ge_1", "share_score_eq_3"]].rename(
+            columns={column: f"v2_{column}" for column in ["share_score_ge_2", "share_score_ge_1", "share_score_eq_3"]}
+        ),
+        on="year",
+        validate="one_to_one",
+    )
+    for metric in ["share_score_ge_2", "share_score_ge_1", "share_score_eq_3"]:
+        annual_comparison[f"delta_{metric}"] = annual_comparison[f"v2_{metric}"] - annual_comparison[f"v1_{metric}"]
+    _write_csv(annual_comparison, Path("artifacts/review/v1_v2_annual_comparison.csv"))
+    summary = {
+        "available": True,
+        "items": len(comparison),
+        "score_changes": int(comparison["score_changed"].sum()),
+        "main_threshold_changes": int(comparison["crossed_main_threshold"].sum()),
+        "v1_score_distribution": old_labels["score"].astype(int).value_counts().sort_index().to_dict(),
+        "v2_score_distribution": labels["score"].astype(int).value_counts().sort_index().to_dict(),
+        "max_abs_annual_main_share_change": float(annual_comparison["delta_share_score_ge_2"].abs().max()),
+    }
+    Path("artifacts/review/v1_v2_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    return summary
+
+
 def run_pipeline(ads_path: Path, firms_path: Path, output_dir: Path, *, offline: bool, seed: int) -> None:
+    cache_dir = Path("artifacts/llm") / f"v{PROMPT_VERSION.split('.')[0]}"
+    label_cache = cache_dir / "labels_cache.jsonl"
+    require_formal_cache(label_cache, offline=offline)
+    _snapshot_previous_version()
+    transactional_paths = [
+        Path("data/processed"), Path("data/interim"), output_dir, Path("reports"), Path("dist"),
+        Path("artifacts/review"), Path("artifacts/manifests"), Path("artifacts/llm/request_manifest.csv"),
+        Path("verification_report.md"),
+    ]
+    with OutputTransaction(transactional_paths):
+        _run_pipeline_impl(ads_path, firms_path, output_dir, offline=offline, seed=seed, label_cache=label_cache)
+
+
+def _run_pipeline_impl(ads_path: Path, firms_path: Path, output_dir: Path, *, offline: bool, seed: int, label_cache: Path) -> None:
     started = datetime.now(timezone.utc)
     ads, duplicate_map, ad_stats = clean_ads(ads_path)
     firms, firm_stats = clean_firms(firms_path)
@@ -248,19 +407,14 @@ def run_pipeline(ads_path: Path, firms_path: Path, output_dir: Path, *, offline:
     match_review = matches.loc[matches["match_method"].ne("exact_normalized")].merge(top_candidates, on="canonical_id", how="left", validate="one_to_one")
     match_review["review_decision"] = match_review["match_status"].map({"matched": "accepted_reviewed_rule", "unmatched": "rejected_auto_match"})
     _write_csv(match_review, Path("artifacts/review/company_match_review.csv"))
-    label_cache = Path("artifacts/llm/labels_cache.jsonl")
-    use_formal_labels = label_cache.exists() or not offline
-    if use_formal_labels:
-        labels = label_with_deepseek(ads, label_cache, Path("config/ai_rubric.yaml"), allow_network=not offline)
-        labels, reliability = run_reliability_audit(ads, labels, seed, allow_network=not offline)
-    else:
-        labels = provisional_labels(ads)
-        reliability = {"status": "not_run_no_api"}
+    labels = label_with_deepseek(ads, label_cache, Path("config/ai_rubric.yaml"), allow_network=not offline)
+    labels, reliability = run_reliability_audit(ads, labels, seed, allow_network=not offline)
     _write_csv(labels, output_dir / "ai_scores.csv")
-    request_manifest_columns = ["canonical_id", "content_hash", "model", "prompt_version", "label_status"]
+    request_manifest_columns = ["canonical_id", "content_hash", "model", "prompt_version", "schema_version", "prompt_fingerprint", "stage", "thinking", "label_status"]
     _write_csv(labels[request_manifest_columns], Path("artifacts/llm/request_manifest.csv"))
     annual = annual_summary(ads, labels)
     _write_csv(annual, output_dir / "annual_ai_share.csv")
+    sensitivity = _write_version_comparison(labels, annual)
     plot_annual(annual, output_dir / "figures/annual_ai_share.png")
     report = _report(stats, matches, labels, annual, reliability)
     Path("reports/ra_task_report.md").write_text(report, encoding="utf-8")
@@ -277,7 +431,9 @@ def run_pipeline(ads_path: Path, firms_path: Path, output_dir: Path, *, offline:
         "seed": seed,
         "network_allowed": not offline,
         "api_key_present": bool(os.environ.get("DEEPSEEK_API_KEY")),
-        "formal_cache_replay": use_formal_labels and offline,
+        "formal_cache_replay": offline,
+        "prompt_version": PROMPT_VERSION,
+        "sensitivity_v1_v2": sensitivity,
         "stats": stats,
         "reliability": reliability,
     }
@@ -288,6 +444,7 @@ def run_pipeline(ads_path: Path, firms_path: Path, output_dir: Path, *, offline:
 
 
 def verify_outputs(output_dir: Path, *, write_report: bool = False, require_archive: bool = True) -> dict:
+    cache_dir = Path("artifacts/llm") / f"v{PROMPT_VERSION.split('.')[0]}"
     required = [
         Path("data/raw/ra_task_ads.csv"), Path("data/raw/ra_task_firms.csv"),
         Path("data/processed/cleaned_ads.csv"), Path("data/processed/valid_firms.csv"),
@@ -296,8 +453,9 @@ def verify_outputs(output_dir: Path, *, write_report: bool = False, require_arch
         output_dir / "figures/annual_ai_share.png", Path("artifacts/review/company_match_candidates.csv"),
         Path("artifacts/review/company_match_review.csv"),
         Path("artifacts/review/reliability_sample.csv"), Path("artifacts/review/reliability_metrics.json"),
-        Path("artifacts/llm/labels_cache.jsonl"), Path("artifacts/llm/audit_cache.jsonl"),
-        Path("artifacts/llm/adjudication_cache.jsonl"), Path("reports/ra_task_report.md"),
+        Path("artifacts/review/v1_v2_label_comparison.csv"), Path("artifacts/review/v1_v2_annual_comparison.csv"),
+        Path("artifacts/review/v1_v2_summary.json"), cache_dir / "labels_cache.jsonl", cache_dir / "audit_cache.jsonl",
+        cache_dir / "adjudication_cache.jsonl", Path("reports/ra_task_report.md"),
         Path("reports/ra_task_report.qmd"), Path("reports/ra_task_report.html"),
     ]
     if require_archive:
@@ -345,15 +503,37 @@ def verify_outputs(output_dir: Path, *, write_report: bool = False, require_arch
     if len(labels) != 573 or labels["canonical_id"].duplicated().any(): problems.append("label count/key")
     scores = labels["score"].astype(int)
     if not scores.between(0, 3).all(): problems.append("score range")
-    if labels.loc[scores.gt(0), "evidence"].eq("").any(): problems.append("positive label without source evidence")
+    if set(labels["prompt_version"]) != {PROMPT_VERSION}: problems.append("stale prompt version in final labels")
+    try:
+        source_by_id = ads.set_index("canonical_id").apply(content_text, axis=1).to_dict()
+        for _, row in labels.iterrows():
+            evidence = [piece for piece in row["evidence"].split("|") if piece]
+            payload = json.dumps({"items": [{"canonical_id": row["canonical_id"], "score": int(row["score"]), "evidence": evidence, "reason": row["reason"], "confidence": row["confidence"]}]}, ensure_ascii=False)
+            validate_batch(payload, {row["canonical_id"]: source_by_id[row["canonical_id"]]})
+    except (KeyError, TypeError, ValueError) as exc:
+        problems.append(f"invalid label evidence/schema: {exc}")
     if labels["label_status"].str.startswith("provisional").any(): problems.append("provisional labels remain")
     if len(annual) != 12 or set(annual["year"].astype(int)) != set(range(2014, 2026)) or int(annual["n_ads"].sum()) != 573: problems.append("annual years/denominator")
     share_columns = ["share_score_ge_2", "wilson_low", "wilson_high", "share_score_ge_1", "share_score_eq_3"]
     if not annual[share_columns].apply(lambda column: column.between(0, 1)).all().all(): problems.append("annual share bounds")
+    try:
+        validate_annual_consistency(ads, labels[["canonical_id", "score"]], annual)
+    except ValueError as exc:
+        problems.append(str(exc))
     if len(reliability_sample) != 120 or reliability_sample["canonical_id"].duplicated().any(): problems.append("reliability sample count/key")
     disagreement = reliability_sample["primary_score"].ne(reliability_sample["audit_score"])
     if reliability_sample.loc[disagreement, ["adjudicated_score", "adjudication_reason"]].eq("").any().any(): problems.append("unadjudicated reliability disagreement")
-    if reliability_metrics.get("sample_size") != 120 or reliability_metrics.get("disagreements") != int(disagreement.sum()): problems.append("reliability metrics mismatch")
+    recalculated_reliability = calculate_reliability_metrics(reliability_sample)
+    for key, expected in recalculated_reliability.items():
+        actual = reliability_metrics.get(key)
+        if isinstance(expected, float):
+            if actual is None or abs(float(actual) - expected) > 1e-12:
+                problems.append(f"reliability metric mismatch: {key}")
+        elif actual != expected:
+            problems.append(f"reliability metric mismatch: {key}")
+    aliases = pd.read_csv("config/company_aliases.csv", dtype=str, keep_default_na=False)
+    provenance_columns = ["reviewer", "reviewed_at", "review_basis"]
+    if not set(provenance_columns).issubset(aliases.columns) or aliases[provenance_columns].eq("").any().any(): problems.append("company alias provenance incomplete")
     report = Path("reports/ra_task_report.md").read_text(encoding="utf-8")
     report_headings = ["数据与清洗", "公司匹配", "AI / 数字技术编码", "年度结果", "信度检验", "发现", "数据局限", "可复现性"]
     for heading in report_headings:
@@ -379,7 +559,7 @@ def verify_outputs(output_dir: Path, *, write_report: bool = False, require_arch
         "company_matches.industry": int(matches["industry"].eq("").sum()),
         "ai_scores.audit_score": int(labels["audit_score"].eq("").sum()),
     }
-    result = {"status": "PASS", "files_checked": len(required), "checks_passed": 24, "canonical_ads": 573, "matched_ads": int(matched_mask.sum()), "listed_companies": int(matches.loc[matched_mask, "stock_code"].nunique()), "unmatched_ads": int((~matched_mask).sum()), "provisional_labels": 0, "reliability_sample": 120}
+    result = {"status": "PASS", "files_checked": len(required), "canonical_ads": 573, "matched_ads": int(matched_mask.sum()), "listed_companies": int(matches.loc[matched_mask, "stock_code"].nunique()), "unmatched_ads": int((~matched_mask).sum()), "provisional_labels": 0, "reliability_sample": 120, "prompt_version": PROMPT_VERSION}
     if write_report:
         optional_lines = "\n".join(f"- `{key}`：{value} 个空值" for key, value in optional_blanks.items())
         report_text = "# 验证报告\n\n## 结论\n\n" + "\n".join(f"- {key}: {value}" for key, value in result.items()) + "\n\n## 完整性检查\n\n必填字段无空值；主键唯一；未匹配公司均有原因；所有正分标签均有原文证据；120 条信度样本中的所有分歧均已复判。\n\n## 可选字段空值 / NA\n\n下列空值来自原始数据或条件字段，不属于不完整交付：\n\n" + optional_lines + "\n\n## 未完成项\n\n无。\n"
