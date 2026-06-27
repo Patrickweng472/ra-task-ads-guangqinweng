@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from ra_task.matching import match_companies, normalize_company
 
@@ -41,3 +42,18 @@ def test_reviewed_aliases_fix_and_avoid_real_false_positives() -> None:
     assert matches.loc[0, "match_method"] == "reviewed_name_alias"
     assert matches.loc[1, "match_status"] == "unmatched"
     assert not candidates.loc[candidates["canonical_id"].eq("298"), "accepted"].any()
+
+
+def test_overlapping_review_rules_fail_instead_of_using_file_order(tmp_path: Path) -> None:
+    ads = pd.DataFrame([{"canonical_id": "1", "公司名称": "甲科技股份有限公司", "关联公司名称": "甲科技股份有限公司"}])
+    firms = pd.DataFrame([
+        {"股票代码": "000001.SZ", "证券简称": "甲", "公司全称": "甲集团股份有限公司", "证监会行业": "A"},
+        {"股票代码": "000002.SZ", "证券简称": "乙", "公司全称": "乙集团股份有限公司", "证监会行业": "B"},
+    ])
+    aliases = tmp_path / "aliases.csv"
+    pd.DataFrame([
+        {"pattern": "甲科技", "stock_code": "000001.SZ", "match_method": "reviewed_name_alias", "match_note": "one"},
+        {"pattern": "甲科技股份", "stock_code": "000002.SZ", "match_method": "reviewed_name_alias", "match_note": "two"},
+    ]).to_csv(aliases, index=False)
+    with pytest.raises(ValueError, match="multiple reviewed rules"):
+        match_companies(ads, firms, aliases)
