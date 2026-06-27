@@ -36,6 +36,26 @@ def test_up_to_five_exact_supporting_phrases_are_allowed() -> None:
     assert validate_batch(payload, {"1": source})[0].evidence == evidence
 
 
+def test_excess_valid_evidence_is_deterministically_capped_at_five() -> None:
+    evidence = [f"证据{i}" for i in range(7)]
+    source = "岗位：系统实施\n描述：" + "、".join(evidence) + "\n标签：IT"
+    payload = json.dumps(
+        {
+            "items": [
+                {
+                    "canonical_id": "1",
+                    "score": 2,
+                    "evidence": evidence,
+                    "reason": "系统实施是核心职责，不是辅助工具使用",
+                    "confidence": "high",
+                }
+            ]
+        },
+        ensure_ascii=False,
+    )
+    assert validate_batch(payload, {"1": source})[0].evidence == evidence[:5]
+
+
 def test_punctuation_normalized_evidence_is_repaired_to_exact_source_span() -> None:
     source = (
         "岗位：天猫运营\n"
