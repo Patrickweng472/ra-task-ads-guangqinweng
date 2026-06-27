@@ -32,6 +32,14 @@ class Label(BaseModel):
     reason: str = Field(min_length=2, max_length=240)
     confidence: Literal["high", "medium", "low"]
 
+    @field_validator("evidence", mode="before")
+    @classmethod
+    def cap_excess_evidence(cls, value: object) -> object:
+        # The response contract asks for at most five phrases.  Some models
+        # occasionally return additional valid phrases; keeping the first five
+        # is deterministic and every retained phrase is still source-validated.
+        return value[:5] if isinstance(value, list) else value
+
     @field_validator("evidence")
     @classmethod
     def nonempty_evidence(cls, values: list[str]) -> list[str]:
