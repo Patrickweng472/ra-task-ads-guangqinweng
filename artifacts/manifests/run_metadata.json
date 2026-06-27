@@ -1,0 +1,24 @@
+{
+  "run_started_utc": "2026-06-27T09:29:33.523136+00:00",
+  "run_finished_utc": "2026-06-27T09:29:36.213028+00:00",
+  "seed": 20260627,
+  "online_llm": true,
+  "stats": {
+    "raw_ads": 612,
+    "canonical_ads": 573,
+    "duplicates_removed": 39,
+    "duplicate_groups": 38,
+    "raw_firm_rows": 5463,
+    "valid_firms": 5461,
+    "invalid_firm_rows": 2
+  },
+  "reliability": {
+    "status": "completed",
+    "sample_size": 120,
+    "disagreements": 25,
+    "exact_agreement": 0.7916666666666666,
+    "within_one_agreement": 0.9916666666666667,
+    "binary_agreement_score_ge_2": 0.9416666666666667,
+    "quadratic_weighted_kappa": 0.7923618835743418
+  }
+}
