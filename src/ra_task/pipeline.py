@@ -14,7 +14,7 @@ import pandas as pd
 
 from .analysis import annual_summary, plot_annual, quadratic_weighted_kappa
 from .cleaning import TOKEN_RE, clean_ads, clean_firms
-from .llm_labeling import label_with_deepseek, provisional_labels
+from .llm_labeling import PROMPT_VERSION, content_text, label_with_deepseek, provisional_labels, rule_score
 from .matching import match_companies
 
 
@@ -93,32 +93,102 @@ def _report(stats: dict, matches: pd.DataFrame, labels: pd.DataFrame, annual: pd
 """
 
 
-def run_reliability_audit(ads: pd.DataFrame, labels: pd.DataFrame, seed: int, *, allow_network: bool = True) -> tuple[pd.DataFrame, dict]:
+def select_audit_sample(ads: pd.DataFrame, labels: pd.DataFrame, seed: int, target_size: int = 120) -> pd.DataFrame:
+    """Select all high-information cases, then add a balanced stratified fill."""
     joined = ads.merge(labels[["canonical_id", "score", "confidence"]], on="canonical_id", validate="one_to_one")
-    low_ids = set(joined.loc[joined["confidence"] == "low", "canonical_id"].astype(str))
-    selected = joined[joined["canonical_id"].astype(str).isin(low_ids)].copy()
-    remaining = joined[~joined["canonical_id"].astype(str).isin(low_ids)]
-    need = max(0, 120 - len(selected))
-    if need:
-        pieces = []
-        for _, group in remaining.groupby("score", sort=True):
-            take = min(len(group), max(1, round(need * len(group) / len(remaining))))
-            pieces.append(group.sample(n=take, random_state=seed))
-        fill = pd.concat(pieces).drop_duplicates("canonical_id")
-        if len(fill) < need:
-            extra = remaining[~remaining["canonical_id"].isin(fill["canonical_id"])].sample(n=need - len(fill), random_state=seed + 1)
-            fill = pd.concat([fill, extra])
-        selected = pd.concat([selected, fill.head(need)]).drop_duplicates("canonical_id")
+    joined["rule_score"] = joined.apply(lambda row: rule_score(content_text(row))[0], axis=1)
+    reasons: dict[str, set[str]] = {str(item_id): set() for item_id in joined["canonical_id"]}
+    for _, row in joined.iterrows():
+        item_id = str(row["canonical_id"])
+        if row["confidence"] == "low":
+            reasons[item_id].add("low_confidence")
+        if (int(row["score"]) >= 2) != (int(row["rule_score"]) >= 2):
+            reasons[item_id].add("rule_model_threshold_conflict")
+        if int(row["score"]) == 3:
+            reasons[item_id].add("strict_score3")
+    targeted_ids = [item_id for item_id, item_reasons in reasons.items() if item_reasons]
+    if len(targeted_ids) > target_size:
+        raise ValueError(f"targeted audit cases ({len(targeted_ids)}) exceed target size ({target_size})")
+    selected_ids = list(targeted_ids)
+    remaining = joined[~joined["canonical_id"].astype(str).isin(selected_ids)]
+    pools = {
+        int(score): group.sample(frac=1, random_state=seed + int(score))["canonical_id"].astype(str).tolist()
+        for score, group in remaining.groupby("score", sort=True)
+    }
+    while len(selected_ids) < min(target_size, len(joined)) and any(pools.values()):
+        for score in sorted(pools):
+            if pools[score] and len(selected_ids) < target_size:
+                item_id = pools[score].pop()
+                selected_ids.append(item_id)
+                reasons[item_id].add("stratified_fill")
+    selected = joined[joined["canonical_id"].astype(str).isin(selected_ids)].copy()
+    selected["selection_reason"] = selected["canonical_id"].astype(str).map(lambda item_id: "|".join(sorted(reasons[item_id])))
+    return selected.sort_values("canonical_id", key=lambda series: series.astype(int)).reset_index(drop=True)
+
+
+def build_adjudication_context(row: pd.Series, *, primary_reason: str, primary_evidence: str) -> dict:
+    """Build an explicit two-coding comparison for a reasoned adjudication."""
+    return {
+        "primary": {
+            "score": int(row["primary_score"]),
+            "evidence": primary_evidence.split("|") if primary_evidence else [],
+            "reason": primary_reason,
+            "confidence": row["primary_confidence"],
+        },
+        "audit": {
+            "score": int(row["audit_score"]),
+            "evidence": str(row.get("audit_evidence", "")).split("|") if row.get("audit_evidence", "") else [],
+            "reason": row["audit_reason"],
+            "confidence": row["audit_confidence"],
+        },
+    }
+
+
+def run_reliability_audit(ads: pd.DataFrame, labels: pd.DataFrame, seed: int, *, allow_network: bool = True) -> tuple[pd.DataFrame, dict]:
+    selected = select_audit_sample(ads, labels, seed=seed, target_size=120)
     audit_ads = ads[ads["canonical_id"].isin(selected["canonical_id"])].copy()
-    audit = label_with_deepseek(audit_ads, Path("artifacts/llm/audit_cache.jsonl"), Path("config/ai_rubric.yaml"), thinking=True, label_status="llm_audit", allow_network=allow_network)
-    comparison = labels[["canonical_id", "score", "confidence"]].rename(columns={"score": "primary_score", "confidence": "primary_confidence"}).merge(
-        audit[["canonical_id", "score", "confidence", "reason"]].rename(columns={"score": "audit_score", "confidence": "audit_confidence", "reason": "audit_reason"}), on="canonical_id", validate="one_to_one"
+    cache_dir = Path("artifacts/llm") / f"v{PROMPT_VERSION.split('.')[0]}"
+    audit = label_with_deepseek(
+        audit_ads,
+        cache_dir / "audit_cache.jsonl",
+        Path("config/ai_rubric.yaml"),
+        thinking=True,
+        label_status="llm_audit",
+        stage="audit",
+        allow_network=allow_network,
+    )
+    primary_columns = labels[["canonical_id", "score", "evidence", "reason", "confidence"]].rename(
+        columns={"score": "primary_score", "evidence": "primary_evidence", "reason": "primary_reason", "confidence": "primary_confidence"}
+    )
+    audit_columns = audit[["canonical_id", "score", "evidence", "confidence", "reason"]].rename(
+        columns={"score": "audit_score", "evidence": "audit_evidence", "confidence": "audit_confidence", "reason": "audit_reason"}
+    )
+    comparison = selected[["canonical_id", "selection_reason", "rule_score"]].merge(primary_columns, on="canonical_id", validate="one_to_one").merge(
+        audit_columns, on="canonical_id", validate="one_to_one"
     )
     disagreement_ids = comparison.loc[comparison["primary_score"] != comparison["audit_score"], "canonical_id"]
     adjudicated = pd.DataFrame(columns=["canonical_id", "score", "reason", "confidence"])
     if len(disagreement_ids):
         adjudication_ads = ads[ads["canonical_id"].isin(disagreement_ids)]
-        adjudicated = label_with_deepseek(adjudication_ads, Path("artifacts/llm/adjudication_cache.jsonl"), Path("config/ai_rubric.yaml"), thinking=True, label_status="llm_adjudicated", allow_network=allow_network)
+        disagreement_rows = comparison[comparison["canonical_id"].isin(disagreement_ids)]
+        context_by_id = {
+            str(row["canonical_id"]): build_adjudication_context(
+                row,
+                primary_reason=str(row["primary_reason"]),
+                primary_evidence=str(row["primary_evidence"]),
+            )
+            for _, row in disagreement_rows.iterrows()
+        }
+        adjudicated = label_with_deepseek(
+            adjudication_ads,
+            cache_dir / "adjudication_cache.jsonl",
+            Path("config/ai_rubric.yaml"),
+            thinking=True,
+            label_status="llm_adjudicated",
+            stage="adjudication",
+            allow_network=allow_network,
+            context_by_id=context_by_id,
+        )
         comparison = comparison.merge(adjudicated[["canonical_id", "score", "reason"]].rename(columns={"score": "adjudicated_score", "reason": "adjudication_reason"}), on="canonical_id", how="left", validate="one_to_one")
     else:
         comparison["adjudicated_score"] = pd.NA
@@ -127,7 +197,13 @@ def run_reliability_audit(ads: pd.DataFrame, labels: pd.DataFrame, seed: int, *,
     secondary = comparison["audit_score"].astype(int).tolist()
     metrics = {
         "status": "completed",
+        "method": "same_model_blind_retest_with_contextual_adjudication",
+        "independent_human_reliability": False,
         "sample_size": len(comparison),
+        "targeted_cases": int(comparison["selection_reason"].ne("stratified_fill").sum()),
+        "low_confidence_cases": int(comparison["selection_reason"].str.contains("low_confidence").sum()),
+        "rule_model_threshold_conflicts": int(comparison["selection_reason"].str.contains("rule_model_threshold_conflict").sum()),
+        "strict_score3_cases": int(comparison["selection_reason"].str.contains("strict_score3").sum()),
         "disagreements": int((comparison["primary_score"] != comparison["audit_score"]).sum()),
         "exact_agreement": float((comparison["primary_score"] == comparison["audit_score"]).mean()),
         "within_one_agreement": float(((comparison["primary_score"] - comparison["audit_score"]).abs() <= 1).mean()),

@@ -67,11 +67,13 @@ def test_identical_text_can_belong_to_distinct_ads() -> None:
 def test_complete_formal_cache_replays_without_api_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ads = pd.DataFrame([{"canonical_id": "1", "岗位": "数据工程师", "岗位描述": "开发数据平台", "岗位标签": "SQL"}])
     text = "岗位：数据工程师\n描述：开发数据平台\n标签：SQL"
-    record = {"canonical_id": "1", "score": 2, "evidence": "数据平台", "reason": "数字技术是核心职责", "confidence": "high", "model": "deepseek-v4-pro", "prompt_version": "1.0.0", "content_hash": content_hash(text), "label_status": "llm_primary"}
+    rubric = tmp_path / "rubric.yaml"
+    rubric.write_text(Path("config/ai_rubric.yaml").read_text(encoding="utf-8"), encoding="utf-8")
+    rubric_data = yaml.safe_load(rubric.read_text(encoding="utf-8"))
+    fingerprint = llm.prompt_fingerprint(rubric_data, stage="primary", thinking=False)
+    record = {"canonical_id": "1", "score": 2, "evidence": "数据平台", "reason": "数字技术是核心职责，而不是辅助工具", "confidence": "medium", "model": llm.MODEL, "prompt_version": llm.PROMPT_VERSION, "schema_version": llm.SCHEMA_VERSION, "prompt_fingerprint": fingerprint, "stage": "primary", "thinking": False, "content_hash": content_hash(text, fingerprint), "label_status": "llm_primary"}
     cache = tmp_path / "cache.jsonl"
     cache.write_text(json.dumps(record, ensure_ascii=False) + "\n", encoding="utf-8")
-    rubric = tmp_path / "rubric.yaml"
-    rubric.write_text("scores: {}\n", encoding="utf-8")
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     result = label_with_deepseek(ads, cache, rubric, allow_network=False)
     assert result.loc[0, "score"] == 2

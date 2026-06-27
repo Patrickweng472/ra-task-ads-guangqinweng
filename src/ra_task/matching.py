@@ -18,8 +18,16 @@ def match_companies(
     firms: pd.DataFrame,
     aliases_path: Path = Path("config/company_aliases.csv"),
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Match ads to listed firms using exact names and reviewed rules only.
+
+    Fuzzy similarity is deliberately restricted to the review-candidate ledger.
+    Ambiguous normalized names or overlapping reviewed rules fail closed.
+    """
     firms = firms.copy()
     firms["full_norm"] = firms["公司全称"].map(normalize_company)
+    collisions = firms.loc[firms["full_norm"].duplicated(keep=False), ["股票代码", "公司全称", "full_norm"]]
+    if len(collisions):
+        raise ValueError(f"normalized company names are not unique: {collisions.to_dict('records')}")
     by_full = {name: row for name, (_, row) in zip(firms["full_norm"], firms.iterrows()) if name}
     aliases = pd.read_csv(aliases_path, dtype=str, keep_default_na=False)
     by_code = firms.set_index("股票代码", drop=False)
@@ -39,15 +47,24 @@ def match_companies(
                 method, confidence, note = "exact_normalized", "high", "标准化公司全称精确匹配"
                 break
         if not code:
-            for _, alias in aliases.iterrows():
-                if any(re.search(alias["pattern"], name) for name in names):
-                    code = alias["stock_code"]
-                    method = alias.get("match_method", "reviewed_name_alias") or "reviewed_name_alias"
-                    confidence, note = "high", alias["match_note"]
-                    break
-        query = names[0]
-        for rank, result in enumerate(process.extract(query, choices, scorer=fuzz.WRatio, limit=3), start=1):
-            candidate_name, score, candidate_code = result
+            hits = aliases[aliases.apply(lambda alias: any(re.search(alias["pattern"], name) for name in names), axis=1)]
+            hit_codes = set(hits["stock_code"])
+            if len(hit_codes) > 1:
+                raise ValueError(f"multiple reviewed rules matched ad {ad['canonical_id']}: {sorted(hit_codes)}")
+            if len(hit_codes) == 1:
+                chosen = hits.sort_values("pattern", key=lambda series: series.str.len(), ascending=False).iloc[0]
+                code = chosen["stock_code"]
+                if code not in by_code.index:
+                    raise ValueError(f"matched reviewed rule references unknown stock code: {code}")
+                method = chosen.get("match_method", "reviewed_name_alias") or "reviewed_name_alias"
+                confidence, note = "high", chosen["match_note"]
+        ranked: dict[str, tuple[str, float]] = {}
+        for query in dict.fromkeys(name for name in names if name):
+            for candidate_name, score, candidate_code in process.extract(query, choices, scorer=fuzz.WRatio, limit=3):
+                if candidate_code not in ranked or score > ranked[candidate_code][1]:
+                    ranked[candidate_code] = (candidate_name, float(score))
+        ordered = sorted(ranked.items(), key=lambda item: (-item[1][1], item[0]))[:3]
+        for rank, (candidate_code, (candidate_name, score)) in enumerate(ordered, start=1):
             candidates.append({"canonical_id": ad["canonical_id"], "candidate_rank": rank, "candidate_stock_code": candidate_code, "candidate_company": candidate_name, "similarity": round(float(score), 2), "accepted": candidate_code == code})
         if code:
             firm = by_code.loc[code]
