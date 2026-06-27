@@ -5,6 +5,7 @@ import json
 import os
 import re
 import time
+import unicodedata
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Literal
@@ -137,6 +138,41 @@ def prompt_fingerprint(rubric: dict, *, stage: str, thinking: bool) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _search_form(text: str) -> tuple[str, list[int]]:
+    """Return a typography-insensitive search form plus source-index mapping.
+
+    DeepSeek occasionally converts ASCII punctuation to its Chinese full-width
+    equivalent while otherwise copying a phrase verbatim.  We permit only
+    Unicode width/case and punctuation/spacing variation, then map the match
+    back to an actual contiguous source span.  Substantive character edits or
+    omissions still fail validation.
+    """
+    chars: list[str] = []
+    source_indices: list[int] = []
+    for source_index, raw_char in enumerate(text):
+        for normalized_char in unicodedata.normalize("NFKC", raw_char).casefold():
+            if unicodedata.category(normalized_char)[0] in {"P", "Z", "C"}:
+                continue
+            chars.append(normalized_char)
+            source_indices.append(source_index)
+    return "".join(chars), source_indices
+
+
+def _exact_source_span(piece: str, source: str) -> str | None:
+    if piece in source:
+        return piece
+    source_form, source_indices = _search_form(source)
+    piece_form, _ = _search_form(piece)
+    if not piece_form:
+        return None
+    match_start = source_form.find(piece_form)
+    if match_start < 0:
+        return None
+    start = source_indices[match_start]
+    end = source_indices[match_start + len(piece_form) - 1] + 1
+    return source[start:end]
+
+
 def validate_batch(payload: str, expected: dict[str, str]) -> list[Label]:
     parsed = LabelBatch.model_validate_json(payload)
     ids = [item.canonical_id for item in parsed.items]
@@ -144,9 +180,11 @@ def validate_batch(payload: str, expected: dict[str, str]) -> list[Label]:
         raise ValueError("response IDs do not match request")
     for item in parsed.items:
         source = expected[item.canonical_id]
-        missing = [piece for piece in item.evidence if piece not in source]
+        repaired = [_exact_source_span(piece, source) for piece in item.evidence]
+        missing = [piece for piece, source_piece in zip(item.evidence, repaired, strict=True) if source_piece is None]
         if missing:
             raise ValueError(f"evidence must be an exact source substring: {missing}")
+        item.evidence = [piece for piece in repaired if piece is not None]
         title = source.splitlines()[0].removeprefix("岗位：").strip()
         if item.score > 0 and item.evidence == [title] and not TECHNICAL_TITLE_RE.search(title):
             raise ValueError("evidence does not support a positive score: generic title only")
