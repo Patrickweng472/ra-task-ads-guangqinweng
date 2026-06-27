@@ -27,7 +27,7 @@ TECHNICAL_TITLE_RE = re.compile(
 class Label(BaseModel):
     canonical_id: str
     score: int = Field(ge=0, le=3)
-    evidence: list[str] = Field(default_factory=list, max_length=3)
+    evidence: list[str] = Field(default_factory=list, max_length=5)
     reason: str = Field(min_length=2, max_length=240)
     confidence: Literal["high", "medium", "low"]
 
@@ -113,7 +113,7 @@ def _system_prompt(rubric: dict, thinking: bool, stage: str = "primary") -> str:
         "3. 在 0/1、1/2、2/3 之间逐级比较，选择原文能充分支持的最高等级。"
         "4. 3 分是严格 AI 研发：必须明确出现 AI、机器学习、深度学习、神经网络、计算机视觉、NLP、大模型、生成式 AI，或清晰的数据驱动模型训练/推理。"
         "金融定价模型、风险计量、传统统计建模、物理仿真、器件物理模型、控制算法、通信算法、大数据/ETL 都不是 3 分，除非原文另外明确说明 AI/ML。"
-        "5. evidence 必须是原文连续出现的 1–3 个支持性短语，不得改写。普通岗位标题不能单独支持正分。"
+        "5. evidence 必须是原文连续出现的 1–5 个支持性短语，不得改写。普通岗位标题不能单独支持正分。"
         "6. reason 必须说明为什么是本等级，以及为什么不是相邻等级。"
         "7. confidence 按可操作标准输出：high=至少两处一致明确证据且边界清晰；medium=仅一处明确证据或需轻微边界判断；low=信息不足、矛盾或相邻等级均有合理解释。"
         f"\n【完整量表与边界例子】{rubric_json}"
