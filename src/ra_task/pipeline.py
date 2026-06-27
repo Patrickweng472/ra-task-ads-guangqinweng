@@ -4,6 +4,8 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -187,6 +189,10 @@ def run_pipeline(ads_path: Path, firms_path: Path, output_dir: Path, *, offline:
     report = _report(stats, matches, labels, annual, reliability)
     Path("reports/ra_task_report.md").write_text(report, encoding="utf-8")
     Path("reports/ra_task_report.qmd").write_text("---\ntitle: \"招聘广告中的 AI / 数字技术含量\"\nlang: zh\nformat:\n  html:\n    embed-resources: true\n---\n\n" + "\n".join(report.splitlines()[1:]), encoding="utf-8")
+    quarto = shutil.which("quarto")
+    if not quarto:
+        raise RuntimeError("生成自包含 HTML 报告需要 Quarto，请先安装并确保 quarto 在 PATH 中")
+    subprocess.run([quarto, "render", "reports/ra_task_report.qmd", "--to", "html"], check=True)
     finished = datetime.now(timezone.utc)
     metadata = {
         "run_started_utc": started.isoformat(),
