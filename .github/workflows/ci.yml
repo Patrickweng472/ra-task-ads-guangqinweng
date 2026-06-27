@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --frozen --all-groups
+      - run: uv run pytest
+      - name: Secret pattern scan
+        run: |
+          if git grep -nE 'sk-[A-Za-z0-9]{20,}' -- ':!data/raw/**'; then
+            echo 'Potential API key found' >&2
+            exit 1
+          fi
+      - name: Verify committed outputs
+        run: uv run ra-task verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ra-task-submission
+          path: dist/ra_task_submission.zip
+
