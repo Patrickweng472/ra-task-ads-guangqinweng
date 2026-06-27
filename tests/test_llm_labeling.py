@@ -29,6 +29,13 @@ def test_generic_title_cannot_silently_replace_supporting_evidence() -> None:
         validate_batch(payload, {"1": "岗位：销售\n描述：熟练使用办公软件\n标签："})
 
 
+def test_up_to_five_exact_supporting_phrases_are_allowed() -> None:
+    evidence = ["网络运行", "ERP系统", "数据备份", "系统维护"]
+    source = "岗位：网络管理员\n描述：负责网络运行、ERP系统、数据备份和系统维护\n标签：IT"
+    payload = json.dumps({"items": [{"canonical_id": "1", "score": 2, "evidence": evidence, "reason": "系统运维是核心而非辅助使用", "confidence": "high"}]}, ensure_ascii=False)
+    assert validate_batch(payload, {"1": source})[0].evidence == evidence
+
+
 def test_v2_prompt_defines_ai_only_boundary_and_confidence() -> None:
     rubric = yaml.safe_load(Path("config/ai_rubric.yaml").read_text(encoding="utf-8"))
     prompt = llm._system_prompt(rubric, thinking=False)
