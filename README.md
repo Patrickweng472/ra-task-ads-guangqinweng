@@ -6,7 +6,7 @@
 
 - 清除 `<$&数字&$>` 网页格式乱码，兼容时间戳和纯日期格式。
 - 按除 `id` 外的全部业务字段识别重复，保留来源 ID 映射。
-- 公司匹配采用精确匹配、经审核母公司规则和唯一证券简称；模糊相似度只生成候选。
+- 公司匹配采用精确全称、经审核的母公司规则和历史曾用名；简称/模糊相似度只生成候选，不自动接受。
 - 评分定义：0 无实质技术，1 辅助数字工具，2 数字技术为核心，3 明确 AI / 模型 / 高级算法。
 - 主年度指标为得分不低于 2，同时报告得分不低于 1 和严格等于 3。
 
@@ -14,7 +14,7 @@
 
 1. 安装 [uv](https://docs.astral.sh/uv/) 并执行 `uv sync --all-groups`。
 2. 在线正式编码前设置环境变量 `DEEPSEEK_API_KEY`，执行 `uv run ra-task run`。
-3. 无密钥时可执行 `uv run ra-task run --offline` 验证完整流水线；其标签会明确标记为 provisional。
+3. 仓库已提交按文本哈希索引的正式脱敏缓存；执行 `uv run ra-task run --offline` 可在无密钥、无网络时完整重建结果。只有在缓存不完整时才需要 API 密钥。
 4. 执行 `uv run pytest` 和 `uv run ra-task verify` 完成验证。
 
 ## 主要产出
@@ -33,3 +33,4 @@
 
 Python、pandas、NumPy、RapidFuzz、OpenAI SDK、Pydantic、Matplotlib、pytest、uv、Quarto、Git 和 GitHub Actions。实际流水线运行时间记录在 `artifacts/manifests/run_metadata.json`。
 
+整体完成约用 4 小时（实现、API 编码、公司复核、测试和报告）。任务 1–10 及加分项的逐条证据见 `docs/completion_audit.md`。

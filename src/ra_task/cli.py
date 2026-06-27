@@ -25,10 +25,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         run_pipeline(args.ads, args.firms, args.output_dir, offline=args.offline, seed=args.seed)
     else:
-        verify_outputs(args.output_dir, write_report=True)
+        verify_outputs(args.output_dir, require_archive=True)
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

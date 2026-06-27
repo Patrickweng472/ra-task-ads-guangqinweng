@@ -13,10 +13,6 @@ def normalize_company(value: object) -> str:
     return re.sub(r"[\s\-—_·•,，.。()（）/\\]+", "", text)
 
 
-def _short_key(value: str) -> str:
-    return re.sub(r"^(?:\*?st)|[aAuU]$", "", normalize_company(value), flags=re.IGNORECASE)
-
-
 def match_companies(
     ads: pd.DataFrame,
     firms: pd.DataFrame,
@@ -24,15 +20,9 @@ def match_companies(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     firms = firms.copy()
     firms["full_norm"] = firms["公司全称"].map(normalize_company)
-    firms["short_norm"] = firms["证券简称"].map(_short_key)
     by_full = {name: row for name, (_, row) in zip(firms["full_norm"], firms.iterrows()) if name}
     aliases = pd.read_csv(aliases_path, dtype=str, keep_default_na=False)
     by_code = firms.set_index("股票代码", drop=False)
-    short_to_codes: dict[str, list[str]] = {}
-    for _, firm in firms.iterrows():
-        key = firm["short_norm"]
-        if len(key) >= 3:
-            short_to_codes.setdefault(key, []).append(firm["股票代码"])
     choices = dict(zip(firms["股票代码"], firms["公司全称"]))
     rows: list[dict[str, object]] = []
     candidates: list[dict[str, object]] = []
@@ -52,17 +42,9 @@ def match_companies(
             for _, alias in aliases.iterrows():
                 if any(re.search(alias["pattern"], name) for name in names):
                     code = alias["stock_code"]
-                    method, confidence, note = "reviewed_parent_rule", "high", alias["match_note"]
+                    method = alias.get("match_method", "reviewed_name_alias") or "reviewed_name_alias"
+                    confidence, note = "high", alias["match_note"]
                     break
-        if not code:
-            hits = set()
-            joined = "|".join(normalized)
-            for short, codes in short_to_codes.items():
-                if short in joined and len(codes) == 1:
-                    hits.update(codes)
-            if len(hits) == 1:
-                code = hits.pop()
-                method, confidence, note = "unique_short_name", "medium", "唯一证券简称包含匹配，已保留方法供复核"
         query = names[0]
         for rank, result in enumerate(process.extract(query, choices, scorer=fuzz.WRatio, limit=3), start=1):
             candidate_name, score, candidate_code = result
@@ -73,7 +55,7 @@ def match_companies(
             status, reason = "matched", ""
         else:
             stock_name = company_name = industry = ""
-            status, reason = "unmatched", "无可靠的精确、母公司规则或唯一简称匹配"
+            status, reason = "unmatched", "无可靠的精确匹配或已复核的母公司/曾用名规则"
         rows.append({
             "canonical_id": ad["canonical_id"], "ad_company": ad["公司名称"], "stock_code": code,
             "stock_name": stock_name, "listed_company": company_name, "industry": industry,
@@ -81,4 +63,3 @@ def match_companies(
             "match_note": note, "unmatched_reason": reason,
         })
     return pd.DataFrame(rows), pd.DataFrame(candidates)
-

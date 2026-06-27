@@ -5,6 +5,7 @@ import json
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Literal
 
@@ -97,10 +98,18 @@ def validate_batch(payload: str, expected: dict[str, str]) -> list[Label]:
     return parsed.items
 
 
-def label_with_deepseek(ads: pd.DataFrame, cache_path: Path, rubric_path: Path, *, thinking: bool = False, batch_size: int = 16, label_status: str = "llm_primary") -> pd.DataFrame:
-    api_key = os.environ.get("DEEPSEEK_API_KEY")
-    if not api_key:
-        raise RuntimeError("DEEPSEEK_API_KEY is not set")
+def label_with_deepseek(
+    ads: pd.DataFrame,
+    cache_path: Path,
+    rubric_path: Path,
+    *,
+    thinking: bool = False,
+    batch_size: int = 8,
+    max_workers: int = 4,
+    label_status: str = "llm_primary",
+    allow_network: bool = True,
+    client: object | None = None,
+) -> pd.DataFrame:
     rubric = yaml.safe_load(rubric_path.read_text(encoding="utf-8"))
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cached: dict[tuple[str, str], dict] = {}
@@ -109,7 +118,6 @@ def label_with_deepseek(ads: pd.DataFrame, cache_path: Path, rubric_path: Path, 
             if line.strip():
                 record = json.loads(line)
                 cached[(str(record["canonical_id"]), record["content_hash"])] = record
-    client = OpenAI(api_key=api_key, base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
     pending = []
     final = []
     for _, ad in ads.iterrows():
@@ -120,8 +128,20 @@ def label_with_deepseek(ads: pd.DataFrame, cache_path: Path, rubric_path: Path, 
             final.append(cached[cache_key])
         else:
             pending.append((str(ad["canonical_id"]), text, digest))
-    for start in range(0, len(pending), batch_size):
-        batch = pending[start:start + batch_size]
+
+    # A complete committed cache is sufficient for a fully offline, formal
+    # reproduction.  Credentials are only required when an item is missing.
+    if not pending:
+        return pd.DataFrame(final).sort_values("canonical_id", key=lambda s: s.astype(int)).reset_index(drop=True)
+    if not allow_network:
+        raise RuntimeError(f"Offline cache is incomplete: {len(pending)} labels are missing")
+    if client is None:
+        api_key = os.environ.get("DEEPSEEK_API_KEY")
+        if not api_key:
+            raise RuntimeError(f"DEEPSEEK_API_KEY is not set and {len(pending)} labels are missing from cache")
+        client = OpenAI(api_key=api_key, base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
+
+    def request_batch(batch: list[tuple[str, str, str]]) -> list[dict]:
         expected = {item_id: text for item_id, text, _ in batch}
         user_json = {"ads": [{"canonical_id": item_id, "text": text} for item_id, text, _ in batch]}
         last_error: Exception | None = None
@@ -138,21 +158,47 @@ def label_with_deepseek(ads: pd.DataFrame, cache_path: Path, rubric_path: Path, 
                 content = response.choices[0].message.content or ""
                 labels = validate_batch(content, expected)
                 usage = getattr(response, "usage", None)
+                records = []
                 for label in labels:
                     digest = next(d for item_id, _, d in batch if item_id == label.canonical_id)
                     record = {**label.model_dump(), "evidence": "|".join(label.evidence[:5]), "model": MODEL, "prompt_version": PROMPT_VERSION, "content_hash": digest, "label_status": label_status, "input_tokens": getattr(usage, "prompt_tokens", None), "output_tokens": getattr(usage, "completion_tokens", None)}
-                    final.append(record)
-                    with cache_path.open("a", encoding="utf-8") as handle:
-                        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-                last_error = None
-                break
+                    records.append(record)
+                return records
             except Exception as exc:  # SDK exposes several provider-specific error subclasses.
                 last_error = exc
                 status = getattr(exc, "status_code", None)
                 if status in {401, 402}:
                     raise
+                retryable = status in {429, 500, 503} or status is None
+                if not retryable:
+                    raise
                 if attempt < 3:
                     time.sleep(2**attempt)
         if last_error is not None:
             raise RuntimeError(f"DeepSeek batch failed after retries: {last_error}") from last_error
+
+        return []  # pragma: no cover - loop either returns or raises.
+
+    def request_with_fallback(batch: list[tuple[str, str, str]]) -> list[dict]:
+        try:
+            return request_batch(batch)
+        except RuntimeError as exc:
+            # Invalid/empty/truncated batch JSON is isolated to one-item calls;
+            # transport/provider failures remain batch failures.
+            if len(batch) == 1 or not isinstance(exc.__cause__, ValueError):
+                raise
+            records: list[dict] = []
+            for item in batch:
+                records.extend(request_batch([item]))
+            return records
+
+    batches = [pending[start:start + batch_size] for start in range(0, len(pending), batch_size)]
+    with ThreadPoolExecutor(max_workers=max(1, min(max_workers, 4))) as executor:
+        futures = [executor.submit(request_with_fallback, batch) for batch in batches]
+        for future in as_completed(futures):
+            records = future.result()
+            final.extend(records)
+            with cache_path.open("a", encoding="utf-8") as handle:
+                for record in records:
+                    handle.write(json.dumps(record, ensure_ascii=False) + "\n")
     return pd.DataFrame(final).sort_values("canonical_id", key=lambda s: s.astype(int)).reset_index(drop=True)

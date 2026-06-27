@@ -1,8 +1,11 @@
 {
-  "run_started_utc": "2026-06-27T09:29:33.523136+00:00",
-  "run_finished_utc": "2026-06-27T09:29:36.213028+00:00",
+  "run_started_utc": "2026-06-27T11:40:12.951657+00:00",
+  "run_finished_utc": "2026-06-27T11:40:15.144816+00:00",
+  "elapsed_seconds": 2.193,
   "seed": 20260627,
-  "online_llm": true,
+  "network_allowed": false,
+  "api_key_present": false,
+  "formal_cache_replay": true,
   "stats": {
     "raw_ads": 612,
     "canonical_ads": 573,
