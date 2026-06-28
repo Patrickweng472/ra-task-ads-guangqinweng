@@ -103,3 +103,50 @@ def test_full_offline_pipeline_rebuilds_delivery_from_formal_caches(
     metadata = (tmp_path / "artifacts/manifests/run_metadata.json").read_text(encoding="utf-8")
     assert '"formal_cache_replay": true' in metadata
     assert '"api_key_present": false' in metadata
+
+
+def test_report_names_strict_ai_and_same_model_retest_honestly() -> None:
+    stats = {
+        "raw_ads": 2, "duplicate_groups": 0, "duplicates_removed": 0, "canonical_ads": 2,
+        "raw_firm_rows": 2, "valid_firms": 2,
+    }
+    matches = pd.DataFrame(
+        [
+            {"match_status": "matched", "stock_code": "000001.SZ", "match_method": "exact_normalized"},
+            {"match_status": "unmatched", "stock_code": "", "match_method": "unmatched"},
+        ]
+    )
+    labels = pd.DataFrame(
+        [
+            {"score": 0, "label_status": "llm_primary"},
+            {"score": 3, "label_status": "llm_adjudicated"},
+        ]
+    )
+    annual = pd.DataFrame(
+        [
+            {
+                "year": 2025, "n_ads": 2, "share_score_ge_1": 0.5, "share_score_ge_2": 0.5,
+                "share_score_eq_3": 0.5, "wilson_low": 0.1, "wilson_high": 0.9,
+            }
+        ]
+    )
+    reliability = {
+        "sample_size": 2, "disagreements": 1, "exact_agreement": 0.5,
+        "within_one_agreement": 1.0, "binary_agreement_score_ge_2": 0.5,
+        "quadratic_weighted_kappa": 0.4, "targeted_cases": 1,
+        "low_confidence_cases": 0, "rule_model_threshold_conflicts": 1, "strict_score3_cases": 1,
+    }
+    sensitivity = {
+        "available": True, "score_changes": 1, "main_threshold_changes": 1,
+        "v1_score_distribution": {0: 1, 2: 1}, "v2_score_distribution": {0: 1, 3: 1},
+        "max_abs_annual_main_share_change": 0.1,
+    }
+
+    report = pipeline._report(stats, matches, labels, annual, reliability, sensitivity)
+
+    assert "严格 AI 研发" in report
+    assert "同一 DeepSeek 模型" in report
+    assert "不等同于独立人工编码者信度" in report
+    assert "金融定价模型" in report
+    assert "版本敏感性" in report
+    assert "第三次独立复判" not in report
