@@ -56,6 +56,25 @@ def test_excess_valid_evidence_is_deterministically_capped_at_five() -> None:
     assert validate_batch(payload, {"1": source})[0].evidence == evidence[:5]
 
 
+def test_single_evidence_positive_label_cannot_claim_high_confidence() -> None:
+    payload = json.dumps(
+        {
+            "items": [
+                {
+                    "canonical_id": "1",
+                    "score": 1,
+                    "evidence": ["熟练使用财务软件"],
+                    "reason": "软件是财务工作的辅助工具，不是技术核心产出",
+                    "confidence": "high",
+                }
+            ]
+        },
+        ensure_ascii=False,
+    )
+    label = validate_batch(payload, {"1": "岗位：会计\n描述：熟练使用财务软件\n标签：财务"})[0]
+    assert label.confidence == "medium"
+
+
 def test_punctuation_normalized_evidence_is_repaired_to_exact_source_span() -> None:
     source = (
         "岗位：天猫运营\n"
@@ -136,6 +155,30 @@ def test_complete_formal_cache_replays_without_api_key(tmp_path: Path, monkeypat
     result = label_with_deepseek(ads, cache, rubric, allow_network=False)
     assert result.loc[0, "score"] == 2
     assert result.loc[0, "label_status"] == "llm_primary"
+
+
+def test_offline_replay_compacts_cache_to_current_valid_records(tmp_path: Path) -> None:
+    ads = pd.DataFrame([{"canonical_id": "1", "岗位": "数据工程师", "岗位描述": "开发数据平台", "岗位标签": "SQL"}])
+    text = "岗位：数据工程师\n描述：开发数据平台\n标签：SQL"
+    rubric = tmp_path / "rubric.yaml"
+    rubric.write_text(Path("config/ai_rubric.yaml").read_text(encoding="utf-8"), encoding="utf-8")
+    fingerprint = llm.prompt_fingerprint(yaml.safe_load(rubric.read_text(encoding="utf-8")), stage="primary", thinking=False)
+    valid = {
+        "canonical_id": "1", "score": 2, "evidence": "开发数据平台", "reason": "数据平台开发是核心职责，不是辅助使用", "confidence": "high",
+        "model": llm.MODEL, "prompt_version": llm.PROMPT_VERSION, "schema_version": llm.SCHEMA_VERSION,
+        "prompt_fingerprint": fingerprint, "stage": "primary", "thinking": False,
+        "content_hash": content_hash(text, fingerprint), "label_status": "llm_primary",
+    }
+    stale = {**valid, "canonical_id": "obsolete", "content_hash": "stale"}
+    cache = tmp_path / "cache.jsonl"
+    cache.write_text("\n".join(json.dumps(row, ensure_ascii=False) for row in [stale, valid]) + "\n", encoding="utf-8")
+
+    result = label_with_deepseek(ads, cache, rubric, allow_network=False)
+
+    assert result.loc[0, "confidence"] == "medium"
+    compacted = [json.loads(line) for line in cache.read_text(encoding="utf-8").splitlines()]
+    assert [row["canonical_id"] for row in compacted] == ["1"]
+    assert compacted[0]["confidence"] == "medium"
 
 
 def test_stale_or_foreign_cache_record_is_not_accepted(tmp_path: Path) -> None:
