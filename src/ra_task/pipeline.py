@@ -588,7 +588,8 @@ def verify_outputs(output_dir: Path, *, write_report: bool = False, require_arch
     result = {"status": "PASS", "files_checked": len(required), "canonical_ads": 573, "matched_ads": int(matched_mask.sum()), "listed_companies": int(matches.loc[matched_mask, "stock_code"].nunique()), "unmatched_ads": int((~matched_mask).sum()), "provisional_labels": 0, "reliability_sample": 120, "prompt_version": PROMPT_VERSION}
     if write_report:
         optional_lines = "\n".join(f"- `{key}`：{value} 个空值" for key, value in optional_blanks.items())
-        report_text = "# 验证报告\n\n## 结论\n\n" + "\n".join(f"- {key}: {value}" for key, value in result.items()) + "\n\n## 完整性检查\n\n必填字段无空值；主键唯一；未匹配公司均有原因；所有正分标签均有原文证据；120 条信度样本中的所有分歧均已复判。\n\n## 可选字段空值 / NA\n\n下列空值来自原始数据或条件字段，不属于不完整交付：\n\n" + optional_lines + "\n\n## 未完成项\n\n无。\n"
+        audit_sentence = f"120 条同模型盲重测中的 {reliability_metrics['disagreements']} 条分歧均已完成上下文裁决。"
+        report_text = "# 验证报告\n\n## 结论\n\n" + "\n".join(f"- {key}: {value}" for key, value in result.items()) + "\n\n## 完整性检查\n\n必填字段无空值；主键唯一；未匹配公司均有原因；所有正分标签均有原文证据；" + audit_sentence + "\n\n## 可选字段空值 / NA\n\n下列空值来自原始数据或条件字段，不属于不完整交付：\n\n" + optional_lines + "\n\n## 未完成项\n\n无。\n"
         Path("verification_report.md").write_text(report_text, encoding="utf-8")
         files = [path for path in Path(".").rglob("*") if path.is_file() and ".git" not in path.parts and ".venv" not in path.parts and "dist" not in path.parts and path.name != "file_manifest.csv"]
         manifest = pd.DataFrame([{"path": str(path), "bytes": path.stat().st_size, "sha256": _sha256(path)} for path in sorted(files)])

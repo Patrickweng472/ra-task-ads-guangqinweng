@@ -14,7 +14,7 @@
 | 8. 按年汇总与可视化 | `outputs/annual_ai_share.csv`、`outputs/figures/annual_ai_share.png`、报告“年度结果” | 2014–2025 年、三个阈值、主指标 Wilson 95% CI 和年度样本量 |
 | 9. 3–5 句发现 | 报告“发现” | 4 句描述性发现，无因果外推 |
 | 10. 数据局限 | 报告“数据局限” | 覆盖非随机样本、早期小样本、构成变化及 LLM 边界 |
-| 加分：LLM API 与信度 | `artifacts/llm/*.jsonl`、`artifacts/review/reliability_*` | DeepSeek 正式编码；分层/低置信度样本 120 条；精确、相邻、二分类一致率及加权 κ；所有分歧第三次复判 |
+| 加分：LLM API 与稳定性 | `artifacts/llm/v2/*.jsonl`、`artifacts/review/reliability_*`、`artifacts/review/v1_v2_*` | DeepSeek 正式编码；120 条目标化+分层盲重测；所有 18 条分歧上下文裁决；明确不宣称独立人工信度；v1→v2 敏感性完整留存 |
 | 加分：稳健匹配 | `company_aliases.csv`、`company_match_candidates.csv` | 仅接受精确或审核规则；模糊候选不自动接受；香港/退市/不确定公司保持未匹配 |
 | 加分：工程与 Git | `pyproject.toml`、`tests/`、`.github/workflows/ci.yml`、`artifacts/manifests/` | CLI、锁文件、离线正式缓存复现、自动测试、秘密扫描、SHA-256 清单及分阶段 Git 历史 |
 
