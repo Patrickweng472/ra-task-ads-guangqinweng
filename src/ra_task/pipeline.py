@@ -417,6 +417,7 @@ def _run_pipeline_impl(ads_path: Path, firms_path: Path, output_dir: Path, *, of
     sensitivity = _write_version_comparison(labels, annual)
     plot_annual(annual, output_dir / "figures/annual_ai_share.png")
     report = _report(stats, matches, labels, annual, reliability)
+    Path("reports").mkdir(parents=True, exist_ok=True)
     Path("reports/ra_task_report.md").write_text(report, encoding="utf-8")
     Path("reports/ra_task_report.qmd").write_text("---\ntitle: \"招聘广告中的 AI / 数字技术含量\"\nlang: zh\nformat:\n  html:\n    embed-resources: true\n---\n\n" + "\n".join(report.splitlines()[1:]), encoding="utf-8")
     quarto = shutil.which("quarto")
@@ -437,6 +438,7 @@ def _run_pipeline_impl(ads_path: Path, firms_path: Path, output_dir: Path, *, of
         "stats": stats,
         "reliability": reliability,
     }
+    Path("artifacts/manifests").mkdir(parents=True, exist_ok=True)
     Path("artifacts/manifests/run_metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
     verify_outputs(output_dir, write_report=True, require_archive=False)
     build_archive()
