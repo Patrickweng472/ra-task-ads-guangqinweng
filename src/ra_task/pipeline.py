@@ -109,7 +109,14 @@ def calculate_reliability_metrics(comparison: pd.DataFrame) -> dict:
     }
 
 
-def _report(stats: dict, matches: pd.DataFrame, labels: pd.DataFrame, annual: pd.DataFrame, reliability: dict) -> str:
+def _report(
+    stats: dict,
+    matches: pd.DataFrame,
+    labels: pd.DataFrame,
+    annual: pd.DataFrame,
+    reliability: dict,
+    sensitivity: dict,
+) -> str:
     matched = matches[matches["match_status"] == "matched"]
     status = labels["label_status"].value_counts().to_dict()
     method_counts = matches["match_method"].value_counts()
@@ -117,6 +124,15 @@ def _report(stats: dict, matches: pd.DataFrame, labels: pd.DataFrame, annual: pd
     annual_rows = "\n".join(
         f"| {int(row.year)} | {int(row.n_ads)} | {row.share_score_ge_1:.1%} | {row.share_score_ge_2:.1%} | {row.share_score_eq_3:.1%} | [{row.wilson_low:.1%}, {row.wilson_high:.1%}] |"
         for row in annual.itertuples()
+    )
+    sensitivity_text = (
+        f"v1 到 v2 共有 {sensitivity['score_changes']} 条分数变化，其中 "
+        f"{sensitivity['main_threshold_changes']} 条跨越主阈值；年度主指标的最大绝对变化为 "
+        f"{sensitivity['max_abs_annual_main_share_change']:.1%}。v1 分布为 "
+        f"`{json.dumps(sensitivity['v1_score_distribution'], ensure_ascii=False)}`，v2 分布为 "
+        f"`{json.dumps(sensitivity['v2_score_distribution'], ensure_ascii=False)}`。"
+        if sensitivity.get("available")
+        else "未找到可比的旧版基线，因此本次未报告版本敏感性。"
     )
     return f"""# 招聘广告中的 AI / 数字技术含量
 
@@ -139,7 +155,9 @@ def _report(stats: dict, matches: pd.DataFrame, labels: pd.DataFrame, annual: pd
 - **0 分**：无实质数字技术要求；
 - **1 分**：办公软件、ERP、系统录入等辅助工具；
 - **2 分**：软件、数据工程、自动化等数字技术是岗位核心职责；
-- **3 分**：明确从事 AI、机器学习、模型或高级算法研发。
+- **3 分**：严格 AI 研发，核心职责明确涉及 AI/机器学习模型的研发、训练、评估或部署。
+
+金融定价模型、传统统计建模、物理仿真、控制/通信算法、大数据与 ETL 不因“模型”或“算法”一词自动进入 3 分；除非原文另外明确指向 AI/ML，它们最高为 2 分。
 
 年度主指标为 `score >= 2`，宽松指标为 `score >= 1`，纯 AI 指标为 `score == 3`。当前标签状态：{json.dumps(status, ensure_ascii=False)}。
 
@@ -155,7 +173,13 @@ def _report(stats: dict, matches: pd.DataFrame, labels: pd.DataFrame, annual: pd
 
 ## 信度检验
 
-独立思考模式复核 {reliability.get('sample_size', 0)} 条广告，精确一致率为 {reliability.get('exact_agreement', float('nan')):.1%}，相差不超过一级的一致率为 {reliability.get('within_one_agreement', float('nan')):.1%}，主阈值二分类一致率为 {reliability.get('binary_agreement_score_ge_2', float('nan')):.1%}，二次加权 Cohen's κ 为 {reliability.get('quadratic_weighted_kappa', float('nan')):.3f}。所有分歧均经第三次独立复判。
+同一 DeepSeek 模型在不看主编码结果的条件下，开启 thinking 对 {reliability.get('sample_size', 0)} 条广告做盲重测。样本先纳入所有低置信度、词典与模型跨主阈值冲突、以及全部严格 3 分项，再按分数分层补足；其中目标化案例 {reliability.get('targeted_cases', 0)} 条。精确一致率为 {reliability.get('exact_agreement', float('nan')):.1%}，相差不超过一级的一致率为 {reliability.get('within_one_agreement', float('nan')):.1%}，主阈值二分类一致率为 {reliability.get('binary_agreement_score_ge_2', float('nan')):.1%}，二次加权 Cohen's κ 为 {reliability.get('quadratic_weighted_kappa', float('nan')):.3f}。{reliability.get('disagreements', 0)} 条分歧通过第三次上下文裁决请求处理，裁决请求可见两份编码及其证据。
+
+这些指标衡量的是同一模型在不同请求与思考设置下的测试—重测稳定性，**不等同于独立人工编码者信度**。因为抽样有意富集难例，该一致率也不应直接当作 573 条广告的随机总体准确率。
+
+## 提示词与版本敏感性
+
+v2 提示词新增了核心职责反事实测试、相邻等级排除理由、严格 AI 边界、负面例子和置信度操作定义。{sensitivity_text}这一差异表明结果对构念定义和提示词有实质敏感性，因此仓库同时保留 v1 基线、逐条对比和年度对比，而不是只展示较严格的 v2 结果。
 
 ## 发现
 
@@ -163,7 +187,7 @@ def _report(stats: dict, matches: pd.DataFrame, labels: pd.DataFrame, annual: pd
 
 ## 数据局限
 
-这些广告不是按年份随机抽取的总体样本，且早期年份样本很少；因此年度变化可能来自行业、公司和职位构成变化，不能解释为中国上市公司整体 AI 需求的因果趋势。此外，LLM 编码尽管经过独立复核和第三次复判，仍会受量表边界和招聘文本信息不完整的影响。
+这些广告不是按年份随机抽取的总体样本，且早期年份样本很少；因此年度变化可能来自行业、公司和职位构成变化，不能解释为中国上市公司整体 AI 需求的因果趋势。此外，LLM 编码尽管做了同模型盲重测和上下文裁决，仍会受量表边界、提示词版本、文本歧义和招聘文本信息不完整的影响；本项目未声称具有独立人工金标准确率。
 
 ## 可复现性
 
@@ -416,7 +440,7 @@ def _run_pipeline_impl(ads_path: Path, firms_path: Path, output_dir: Path, *, of
     _write_csv(annual, output_dir / "annual_ai_share.csv")
     sensitivity = _write_version_comparison(labels, annual)
     plot_annual(annual, output_dir / "figures/annual_ai_share.png")
-    report = _report(stats, matches, labels, annual, reliability)
+    report = _report(stats, matches, labels, annual, reliability, sensitivity)
     Path("reports").mkdir(parents=True, exist_ok=True)
     Path("reports/ra_task_report.md").write_text(report, encoding="utf-8")
     Path("reports/ra_task_report.qmd").write_text("---\ntitle: \"招聘广告中的 AI / 数字技术含量\"\nlang: zh\nformat:\n  html:\n    embed-resources: true\n---\n\n" + "\n".join(report.splitlines()[1:]), encoding="utf-8")
@@ -537,7 +561,7 @@ def verify_outputs(output_dir: Path, *, write_report: bool = False, require_arch
     provenance_columns = ["reviewer", "reviewed_at", "review_basis"]
     if not set(provenance_columns).issubset(aliases.columns) or aliases[provenance_columns].eq("").any().any(): problems.append("company alias provenance incomplete")
     report = Path("reports/ra_task_report.md").read_text(encoding="utf-8")
-    report_headings = ["数据与清洗", "公司匹配", "AI / 数字技术编码", "年度结果", "信度检验", "发现", "数据局限", "可复现性"]
+    report_headings = ["数据与清洗", "公司匹配", "AI / 数字技术编码", "年度结果", "信度检验", "提示词与版本敏感性", "发现", "数据局限", "可复现性"]
     for heading in report_headings:
         if f"## {heading}\n\n" not in report: problems.append(f"report missing/nonstandard section: {heading}")
     if "false positive" not in report or "岭南园林" not in report: problems.append("report missing actual false-positive example")
