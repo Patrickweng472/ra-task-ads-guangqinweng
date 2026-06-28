@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 
 import pandas as pd
 import pytest
@@ -77,3 +78,28 @@ def test_offline_mode_fails_before_outputs_when_formal_cache_is_absent(tmp_path:
     assert hasattr(pipeline, "require_formal_cache")
     with pytest.raises(RuntimeError, match="formal v2 cache"):
         pipeline.require_formal_cache(tmp_path / "missing.jsonl", offline=True)
+
+
+@pytest.mark.skipif(shutil.which("quarto") is None, reason="Quarto is required for the full delivery pipeline")
+def test_full_offline_pipeline_rebuilds_delivery_from_formal_caches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project_root = Path(__file__).resolve().parents[1]
+    for relative in ["config", "data/raw", "artifacts/llm/v2", "artifacts/baselines/v1"]:
+        shutil.copytree(project_root / relative, tmp_path / relative)
+    shutil.copy2(project_root / "README.md", tmp_path / "README.md")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+
+    pipeline.run_pipeline(
+        Path("data/raw/ra_task_ads.csv"),
+        Path("data/raw/ra_task_firms.csv"),
+        Path("outputs"),
+        offline=True,
+        seed=20260627,
+    )
+
+    assert pipeline.verify_outputs(Path("outputs"))["status"] == "PASS"
+    metadata = (tmp_path / "artifacts/manifests/run_metadata.json").read_text(encoding="utf-8")
+    assert '"formal_cache_replay": true' in metadata
+    assert '"api_key_present": false' in metadata
