@@ -193,6 +193,8 @@ def validate_batch(payload: str, expected: dict[str, str]) -> list[Label]:
         if missing:
             raise ValueError(f"evidence must be an exact source substring: {missing}")
         item.evidence = [piece for piece in repaired if piece is not None]
+        if item.score > 0 and len(item.evidence) < 2 and item.confidence == "high":
+            item.confidence = "medium"
         title = source.splitlines()[0].removeprefix("岗位：").strip()
         if item.score > 0 and item.evidence == [title] and not TECHNICAL_TITLE_RE.search(title):
             raise ValueError("evidence does not support a positive score: generic title only")
@@ -239,10 +241,23 @@ def _cache_record_is_valid(
             },
             ensure_ascii=False,
         )
-        validate_batch(payload, {item_id: source})
+        validated = validate_batch(payload, {item_id: source})[0]
+        record["evidence"] = "|".join(validated.evidence)
+        record["confidence"] = validated.confidence
     except (TypeError, ValueError):
         return False
     return True
+
+
+def _write_cache_snapshot(cache_path: Path, records: list[dict]) -> None:
+    """Atomically retain one current, validated record per requested item."""
+    by_id = {str(record["canonical_id"]): record for record in records}
+    ordered = sorted(by_id.values(), key=lambda record: int(record["canonical_id"]))
+    temporary = cache_path.with_suffix(cache_path.suffix + ".tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        for record in ordered:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    os.replace(temporary, cache_path)
 
 
 def label_with_deepseek(
@@ -296,6 +311,7 @@ def label_with_deepseek(
             pending.append((item_id, text, digest, context))
 
     if not pending:
+        _write_cache_snapshot(cache_path, final)
         return pd.DataFrame(final).sort_values("canonical_id", key=lambda series: series.astype(int)).reset_index(drop=True)
     if not allow_network:
         raise RuntimeError(f"Offline cache is incomplete: {len(pending)} labels are missing or stale")
@@ -406,4 +422,5 @@ def label_with_deepseek(
         raise
     else:
         executor.shutdown(wait=True)
+    _write_cache_snapshot(cache_path, final)
     return pd.DataFrame(final).sort_values("canonical_id", key=lambda series: series.astype(int)).reset_index(drop=True)
