@@ -3,18 +3,18 @@
 ## 结论
 
 - status: PASS
-- files_checked: 20
-- checks_passed: 24
+- files_checked: 22
 - canonical_ads: 573
 - matched_ads: 538
 - listed_companies: 378
 - unmatched_ads: 35
 - provisional_labels: 0
 - reliability_sample: 120
+- prompt_version: 2.0.0
 
 ## 完整性检查
 
-必填字段无空值；主键唯一；未匹配公司均有原因；所有正分标签均有原文证据；120 条信度样本中的所有分歧均已复判。
+必填字段无空值；主键唯一；未匹配公司均有原因；所有正分标签均有原文证据；120 条同模型盲重测中的 18 条分歧均已完成上下文裁决。
 
 ## 可选字段空值 / NA
 

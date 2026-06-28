@@ -1,0 +1,9 @@
+{
+  "status": "completed",
+  "sample_size": 120,
+  "disagreements": 25,
+  "exact_agreement": 0.7916666666666666,
+  "within_one_agreement": 0.9916666666666667,
+  "binary_agreement_score_ge_2": 0.9416666666666667,
+  "quadratic_weighted_kappa": 0.7923618835743418
+}

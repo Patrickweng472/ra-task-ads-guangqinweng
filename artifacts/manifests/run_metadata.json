@@ -1,11 +1,31 @@
 {
-  "run_started_utc": "2026-06-27T14:32:20.147356+00:00",
-  "run_finished_utc": "2026-06-27T14:32:27.307994+00:00",
-  "elapsed_seconds": 7.161,
+  "run_started_utc": "2026-06-28T02:50:53.166837+00:00",
+  "run_finished_utc": "2026-06-28T02:50:58.225849+00:00",
+  "elapsed_seconds": 5.059,
   "seed": 20260627,
   "network_allowed": false,
   "api_key_present": false,
   "formal_cache_replay": true,
+  "prompt_version": "2.0.0",
+  "sensitivity_v1_v2": {
+    "available": true,
+    "items": 573,
+    "score_changes": 93,
+    "main_threshold_changes": 31,
+    "v1_score_distribution": {
+      "0": 291,
+      "1": 198,
+      "2": 75,
+      "3": 9
+    },
+    "v2_score_distribution": {
+      "0": 303,
+      "1": 209,
+      "2": 59,
+      "3": 2
+    },
+    "max_abs_annual_main_share_change": 0.2
+  },
   "stats": {
     "raw_ads": 612,
     "canonical_ads": 573,
@@ -17,11 +37,17 @@
   },
   "reliability": {
     "status": "completed",
+    "method": "same_model_blind_retest_with_contextual_adjudication",
+    "independent_human_reliability": false,
+    "targeted_cases": 50,
+    "low_confidence_cases": 1,
+    "rule_model_threshold_conflicts": 48,
+    "strict_score3_cases": 2,
     "sample_size": 120,
-    "disagreements": 25,
-    "exact_agreement": 0.7916666666666666,
+    "disagreements": 18,
+    "exact_agreement": 0.85,
     "within_one_agreement": 0.9916666666666667,
-    "binary_agreement_score_ge_2": 0.9416666666666667,
-    "quadratic_weighted_kappa": 0.7923618835743418
+    "binary_agreement_score_ge_2": 0.9166666666666666,
+    "quadratic_weighted_kappa": 0.871742671009772
   }
 }

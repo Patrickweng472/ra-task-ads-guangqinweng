@@ -1,0 +1,19 @@
+{
+  "available": true,
+  "items": 573,
+  "score_changes": 93,
+  "main_threshold_changes": 31,
+  "v1_score_distribution": {
+    "0": 291,
+    "1": 198,
+    "2": 75,
+    "3": 9
+  },
+  "v2_score_distribution": {
+    "0": 303,
+    "1": 209,
+    "2": 59,
+    "3": 2
+  },
+  "max_abs_annual_main_share_change": 0.2
+}
