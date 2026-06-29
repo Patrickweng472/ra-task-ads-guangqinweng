@@ -1,0 +1,11 @@
+{
+  "trials": 3,
+  "sample_size": 60,
+  "exact_score_all_three": 0.9666666666666667,
+  "main_threshold_all_three": 1.0,
+  "exact_score_unstable_items": 2,
+  "main_threshold_unstable_items": 0,
+  "passes_main_threshold_stability": true,
+  "prompt_fingerprint": "aa500b26c91d7c256aebbf68149cf850c08fce888a68f99a956bed35f003bb61",
+  "schema_validity_all_trials": true
+}

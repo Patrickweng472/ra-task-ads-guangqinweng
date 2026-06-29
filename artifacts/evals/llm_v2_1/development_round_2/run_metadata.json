@@ -1,0 +1,7 @@
+{
+  "round": 2,
+  "prompt_fingerprint": "b1a96d54e628242a7b40f4b07063f77f4a87370dcb4a4611863ed44a926f2410",
+  "cache_path": "artifacts/llm/v2_1/development_round_2.jsonl",
+  "offline": false,
+  "sample_size": 60
+}

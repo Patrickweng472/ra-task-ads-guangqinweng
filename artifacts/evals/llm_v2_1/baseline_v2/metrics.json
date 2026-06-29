@@ -1,0 +1,82 @@
+{
+  "baseline": "v2.0.0",
+  "reference": "single-reviewer development reference v2.1",
+  "metrics": {
+    "sample_size": 60,
+    "exact_agreement": 0.8,
+    "within_one_agreement": 0.9833333333333333,
+    "binary_agreement_score_ge_2": 0.8666666666666667,
+    "quadratic_weighted_kappa": 0.8143564356435644,
+    "confusion_matrix_rows_reference_columns_model": [
+      [
+        13,
+        2,
+        1,
+        0
+      ],
+      [
+        2,
+        16,
+        5,
+        0
+      ],
+      [
+        0,
+        2,
+        18,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        1
+      ]
+    ],
+    "per_class": {
+      "0": {
+        "support": 16,
+        "precision": 0.8666666666666667,
+        "recall": 0.8125,
+        "f1": 0.8387096774193549
+      },
+      "1": {
+        "support": 23,
+        "precision": 0.8,
+        "recall": 0.6956521739130435,
+        "f1": 0.7441860465116279
+      },
+      "2": {
+        "support": 20,
+        "precision": 0.75,
+        "recall": 0.9,
+        "f1": 0.8181818181818182
+      },
+      "3": {
+        "support": 1,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      }
+    },
+    "strict_ai": {
+      "positives": 1,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    }
+  },
+  "error_counts": {
+    "match": 48,
+    "threshold_false_positive": 6,
+    "threshold_false_negative": 2,
+    "within_threshold_under": 2,
+    "within_threshold_over": 2
+  },
+  "passes_v2_1_development_targets": {
+    "exact_agreement": false,
+    "binary_agreement_score_ge_2": false,
+    "quadratic_weighted_kappa": false
+  },
+  "passes_all_v2_1_development_targets": false
+}

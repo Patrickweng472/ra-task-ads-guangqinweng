@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .human_evaluation import DEFAULT_REVIEW_SEED, prepare_human_evaluation
 from .pipeline import run_pipeline, verify_outputs
+from .prompt_evaluation import run_development_round, run_stability_trial
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -21,6 +22,12 @@ def build_parser() -> argparse.ArgumentParser:
     review = sub.add_parser("prepare-human-eval", help="生成 v2.1 人工盲审开发集与锁定留出集")
     review.add_argument("--output-dir", type=Path, default=Path("artifacts/evals/llm_v2_1"))
     review.add_argument("--seed", type=int, default=DEFAULT_REVIEW_SEED)
+    development = sub.add_parser("evaluate-v2-1-development", help="运行 v2.1 人工开发集提示词评测")
+    development.add_argument("--round", type=int, choices=[1, 2, 3], required=True)
+    development.add_argument("--offline", action="store_true", help="只重放本轮完整缓存，禁止 API 调用")
+    stability = sub.add_parser("evaluate-v2-1-stability", help="运行冻结提示词的独立稳定性试验")
+    stability.add_argument("--trial", type=int, choices=[2, 3], required=True)
+    stability.add_argument("--offline", action="store_true", help="只重放本次完整缓存，禁止 API 调用")
     return parser
 
 
@@ -30,8 +37,12 @@ def main(argv: list[str] | None = None) -> int:
         run_pipeline(args.ads, args.firms, args.output_dir, offline=args.offline, seed=args.seed)
     elif args.command == "verify":
         verify_outputs(args.output_dir, require_archive=True)
-    else:
+    elif args.command == "prepare-human-eval":
         prepare_human_evaluation(output_dir=args.output_dir, seed=args.seed)
+    elif args.command == "evaluate-v2-1-development":
+        run_development_round(args.round, offline=args.offline)
+    else:
+        run_stability_trial(args.trial, offline=args.offline)
     return 0
 
 

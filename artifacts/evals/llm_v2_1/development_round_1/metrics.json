@@ -1,0 +1,89 @@
+{
+  "metrics": {
+    "sample_size": 60,
+    "exact_agreement": 0.8333333333333334,
+    "within_one_agreement": 0.9833333333333333,
+    "binary_agreement_score_ge_2": 0.9,
+    "quadratic_weighted_kappa": 0.8375,
+    "confusion_matrix_rows_reference_columns_model": [
+      [
+        15,
+        1,
+        0,
+        0
+      ],
+      [
+        2,
+        17,
+        4,
+        0
+      ],
+      [
+        1,
+        1,
+        18,
+        0
+      ],
+      [
+        0,
+        0,
+        1,
+        0
+      ]
+    ],
+    "per_class": {
+      "0": {
+        "support": 16,
+        "precision": 0.8333333333333334,
+        "recall": 0.9375,
+        "f1": 0.8823529411764706
+      },
+      "1": {
+        "support": 23,
+        "precision": 0.8947368421052632,
+        "recall": 0.7391304347826086,
+        "f1": 0.8095238095238095
+      },
+      "2": {
+        "support": 20,
+        "precision": 0.782608695652174,
+        "recall": 0.9,
+        "f1": 0.8372093023255814
+      },
+      "3": {
+        "support": 1,
+        "precision": null,
+        "recall": 0.0,
+        "f1": null
+      }
+    },
+    "strict_ai": {
+      "positives": 1,
+      "precision": null,
+      "recall": 0.0,
+      "f1": null
+    }
+  },
+  "error_counts": {
+    "match": 50,
+    "threshold_false_positive": 4,
+    "threshold_false_negative": 2,
+    "within_threshold_under": 2,
+    "strict_ai_false_negative": 1,
+    "within_threshold_over": 1
+  },
+  "schema_validity_rate": 1.0,
+  "token_usage": {
+    "input_tokens": 82525,
+    "output_tokens": 10920
+  },
+  "estimated_max_cost_cny_without_cache_discount": 0.313095,
+  "pricing_source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+  "release_targets": {
+    "exact_agreement": false,
+    "binary_agreement_score_ge_2": false,
+    "quadratic_weighted_kappa": false,
+    "schema_validity": true
+  },
+  "passes_all_release_targets": false
+}

@@ -36,3 +36,24 @@ cases:
   - {id: strict_ai_false_02, topic: strict_ai, text: "公司主营 AI 产品，本岗位负责发票审核和报销", technology_role: none, strict_ai: false, score: 0}
   - {id: none_01, topic: no_technology, text: "负责门店客户接待、合同归档和日常沟通", technology_role: none, strict_ai: false, score: 0}
   - {id: none_02, topic: no_technology, text: "制定生产计划并协调物料和人员排班", technology_role: none, strict_ai: false, score: 0}
+  - {id: physical_none_01, topic: digital_object_gate, text: "开展MEMS敏感结构设计、封装工艺优化与新材料验证", technology_role: none, strict_ai: false, score: 0}
+  - {id: physical_none_02, topic: digital_object_gate, text: "负责功率电容器认证、安装指导、说明书编制和现场问题反馈", technology_role: none, strict_ai: false, score: 0}
+  - {id: hardware_core_01, topic: hardware_scope, text: "完成多层PCB布局布线、单板调试和电子系统硬件验证", technology_role: core, strict_ai: false, score: 2}
+  - {id: automation_core_01, topic: automation_scope, text: "分析产线PLC故障并编写控制程序完成设备改造", technology_role: core, strict_ai: false, score: 2}
+  - {id: automation_aux_01, topic: automation_scope, text: "装配非标设备并使用CAD绘制机械零件图", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: business_system_aux_01, topic: business_system_participation, text: "结算业务岗位负责提出系统需求、参加验收并管理用户权限", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: business_system_core_01, topic: business_system_participation, text: "编写结算系统测试脚本并使用SQL定位数据库缺陷", technology_role: core, strict_ai: false, score: 2}
+  - {id: digitalization_aux_01, topic: online_digitalization, text: "参与业务线上化建设，跟进供应商进度和验收材料", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: hardware_test_aux_01, topic: digital_testing, text: "使用功率计和频谱仪完成产品测试并整理测试数据", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: support_none_01, topic: technical_support, text: "为低压电气产品编制说明书、准备认证资料并反馈现场问题", technology_role: none, strict_ai: false, score: 0}
+  - {id: simulation_core_01, topic: digital_object_gate, text: "建立器件计算模型并开展物理仿真、参数优化和仿真平台验证", technology_role: core, strict_ai: false, score: 2}
+  - {id: marketing_aux_01, topic: marketing_platforms, text: "负责短视频广告账户投放优化，使用Excel分析转化数据", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: qualification_aux_01, topic: duty_vs_qualification, text: "职责为清算对账和报表报送，任职资格要求了解Oracle数据库", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: bi_core_01, topic: data_work, text: "负责经营数据治理、设计BI指标体系并建设管理数据支持模式", technology_role: core, strict_ai: false, score: 2}
+  - {id: daily_data_aux_01, topic: data_work, text: "更新业务台账并完成日常数据运营和周报汇总", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: vision_ai_01, topic: strict_ai_visual, text: "负责机器视觉模式识别算法的设计、开发、调试与优化", technology_role: core, strict_ai: true, score: 3}
+  - {id: vague_automation_none_01, topic: automation_scope, text: "负责生产过程中的自动化系统管理操作和生产记录", technology_role: none, strict_ai: false, score: 0}
+  - {id: inverter_aux_01, topic: automation_scope, text: "完成变频器和自动化生产线的安装调试与现场支持", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: ops_support_core_01, topic: system_operations_support, text: "协助处理ERP问题咨询、桌面终端故障、服务器网络运维并培训用户", technology_role: core, strict_ai: false, score: 2}
+  - {id: presales_docs_aux_01, topic: technical_presales, text: "面向客户讲解网络安全产品、制作售前文档并开展产品培训", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: product_support_none_01, topic: technical_support, text: "负责工业电气产品认证安装、说明书和售前资料支持", technology_role: none, strict_ai: false, score: 0}

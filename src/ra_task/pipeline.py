@@ -15,7 +15,14 @@ import pandas as pd
 
 from .analysis import annual_summary, plot_annual, quadratic_weighted_kappa
 from .cleaning import TOKEN_RE, clean_ads, clean_firms
-from .llm_labeling import PROMPT_VERSION, content_text, label_with_deepseek, rule_score, validate_batch
+from .llm_labeling import (
+    PROMPT_VERSION,
+    _exact_source_span,
+    content_text,
+    label_with_deepseek,
+    rule_score,
+    validate_batch,
+)
 from .matching import match_companies
 
 
@@ -80,6 +87,12 @@ def require_formal_cache(cache_path: Path, *, offline: bool) -> None:
         raise RuntimeError(f"Offline formal v2 cache is missing: {cache_path}")
 
 
+def _cache_dir_for_version(version: str) -> Path:
+    parts = version.split(".")
+    suffix = parts[0] if len(parts) < 2 or parts[1] == "0" else f"{parts[0]}_{parts[1]}"
+    return Path("artifacts/llm") / f"v{suffix}"
+
+
 def validate_annual_consistency(ads: pd.DataFrame, labels: pd.DataFrame, annual: pd.DataFrame) -> None:
     """Recompute every annual statistic and reject stale or edited summaries."""
     expected = annual_summary(ads, labels.assign(score=labels["score"].astype(int)))
@@ -126,11 +139,11 @@ def _report(
         for row in annual.itertuples()
     )
     sensitivity_text = (
-        f"v1 到 v2 共有 {sensitivity['score_changes']} 条分数变化，其中 "
+        f"{sensitivity['from_version']} 到 {sensitivity['to_version']} 共有 {sensitivity['score_changes']} 条分数变化，其中 "
         f"{sensitivity['main_threshold_changes']} 条跨越主阈值；年度主指标的最大绝对变化为 "
-        f"{sensitivity['max_abs_annual_main_share_change']:.1%}。v1 分布为 "
-        f"`{json.dumps(sensitivity['v1_score_distribution'], ensure_ascii=False)}`，v2 分布为 "
-        f"`{json.dumps(sensitivity['v2_score_distribution'], ensure_ascii=False)}`。"
+        f"{sensitivity['max_abs_annual_main_share_change']:.1%}。{sensitivity['from_version']} 分布为 "
+        f"`{json.dumps(sensitivity['from_score_distribution'], ensure_ascii=False)}`，{sensitivity['to_version']} 分布为 "
+        f"`{json.dumps(sensitivity['to_score_distribution'], ensure_ascii=False)}`。"
         if sensitivity.get("available")
         else "未找到可比的旧版基线，因此本次未报告版本敏感性。"
     )
@@ -179,7 +192,7 @@ def _report(
 
 ## 提示词与版本敏感性
 
-v2 提示词新增了核心职责反事实测试、相邻等级排除理由、严格 AI 边界、负面例子和置信度操作定义。{sensitivity_text}这一差异表明结果对构念定义和提示词有实质敏感性，因此仓库同时保留 v1 基线、逐条对比和年度对比，而不是只展示较严格的 v2 结果。
+v2.1 提示词先判数字技术对象、technology_role 与 strict_ai，再由代码确定性映射分数，并加入人工开发集揭示的边界规则。{sensitivity_text}这一差异表明结果对构念定义和提示词有实质敏感性，因此仓库保留旧版基线、逐条对比和年度对比。
 
 ## 发现
 
@@ -249,11 +262,11 @@ def build_adjudication_context(row: pd.Series, *, primary_reason: str, primary_e
 def run_reliability_audit(ads: pd.DataFrame, labels: pd.DataFrame, seed: int, *, allow_network: bool = True) -> tuple[pd.DataFrame, dict]:
     selected = select_audit_sample(ads, labels, seed=seed, target_size=120)
     audit_ads = ads[ads["canonical_id"].isin(selected["canonical_id"])].copy()
-    cache_dir = Path("artifacts/llm") / f"v{PROMPT_VERSION.split('.')[0]}"
+    cache_dir = _cache_dir_for_version(PROMPT_VERSION)
     audit = label_with_deepseek(
         audit_ads,
         cache_dir / "audit_cache.jsonl",
-        Path("config/ai_rubric.yaml"),
+        Path("config/ai_rubric_v2_1.yaml"),
         thinking=True,
         label_status="llm_audit",
         stage="audit",
@@ -284,7 +297,7 @@ def run_reliability_audit(ads: pd.DataFrame, labels: pd.DataFrame, seed: int, *,
         adjudicated = label_with_deepseek(
             adjudication_ads,
             cache_dir / "adjudication_cache.jsonl",
-            Path("config/ai_rubric.yaml"),
+            Path("config/ai_rubric_v2_1.yaml"),
             thinking=True,
             label_status="llm_adjudicated",
             stage="adjudication",
@@ -326,19 +339,26 @@ def apply_adjudications(labels: pd.DataFrame, comparison: pd.DataFrame, adjudica
             enriched.at[index, "reason"] = final["reason"]
             enriched.at[index, "confidence"] = final["confidence"]
             enriched.at[index, "label_status"] = "llm_adjudicated"
+            for column in ["technology_role", "strict_ai", "boundary_pair"]:
+                if column in final.index:
+                    enriched.at[index, column] = final[column]
     return enriched
 
 
 def _snapshot_previous_version() -> None:
-    """Preserve v1 result artifacts once before the v2 formal rerun."""
+    """Preserve the current formal result once before promoting a newer prompt."""
     current = Path("outputs/ai_scores.csv")
     if not current.exists():
         return
     existing = pd.read_csv(current, dtype=str, keep_default_na=False)
     versions = set(existing.get("prompt_version", pd.Series(dtype=str)))
-    if versions != {"1.0.0"}:
+    if len(versions) != 1:
         return
-    baseline = Path("artifacts/baselines/v1")
+    version = versions.pop()
+    baseline_name = {"1.0.0": "v1", "2.0.0": "v2"}.get(version)
+    if baseline_name is None or version == PROMPT_VERSION:
+        return
+    baseline = Path("artifacts/baselines") / baseline_name
     if baseline.exists():
         return
     baseline.mkdir(parents=True, exist_ok=True)
@@ -347,63 +367,76 @@ def _snapshot_previous_version() -> None:
         Path("outputs/annual_ai_share.csv"),
         Path("artifacts/review/reliability_sample.csv"),
         Path("artifacts/review/reliability_metrics.json"),
-        Path("artifacts/llm/labels_cache.jsonl"),
-        Path("artifacts/llm/audit_cache.jsonl"),
-        Path("artifacts/llm/adjudication_cache.jsonl"),
+        _cache_dir_for_version(version) / "labels_cache.jsonl",
+        _cache_dir_for_version(version) / "audit_cache.jsonl",
+        _cache_dir_for_version(version) / "adjudication_cache.jsonl",
     ]
     for source in sources:
         if source.exists():
             shutil.copy2(source, baseline / source.name)
+    (baseline / "snapshot_metadata.json").write_text(
+        json.dumps({"prompt_version": version, "baseline": baseline_name}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
 
 def _write_version_comparison(labels: pd.DataFrame, annual: pd.DataFrame) -> dict:
-    """Write item- and year-level v1-to-v2 sensitivity artifacts."""
-    baseline_dir = Path("artifacts/baselines/v1")
+    """Write item- and year-level sensitivity artifacts against the latest formal baseline."""
+    if Path("artifacts/baselines/v2/ai_scores.csv").exists():
+        baseline_dir = Path("artifacts/baselines/v2")
+        from_version = "v2"
+    else:
+        baseline_dir = Path("artifacts/baselines/v1")
+        from_version = "v1"
+    to_version = "v" + ".".join(PROMPT_VERSION.split(".")[:2]).rstrip(".0")
+    prefix = f"{from_version}_{to_version.replace('.', '_')}"
     old_labels_path = baseline_dir / "ai_scores.csv"
     old_annual_path = baseline_dir / "annual_ai_share.csv"
     if not old_labels_path.exists() or not old_annual_path.exists():
         return {"available": False}
     old_labels = pd.read_csv(old_labels_path, dtype=str, keep_default_na=False)
     comparison = old_labels[["canonical_id", "score", "evidence", "reason"]].rename(
-        columns={"score": "v1_score", "evidence": "v1_evidence", "reason": "v1_reason"}
+        columns={"score": "from_score", "evidence": "from_evidence", "reason": "from_reason"}
     ).merge(
         labels[["canonical_id", "score", "evidence", "reason"]].rename(
-            columns={"score": "v2_score", "evidence": "v2_evidence", "reason": "v2_reason"}
+            columns={"score": "to_score", "evidence": "to_evidence", "reason": "to_reason"}
         ),
         on="canonical_id",
         validate="one_to_one",
     )
-    comparison["score_changed"] = comparison["v1_score"].astype(int).ne(comparison["v2_score"].astype(int))
-    comparison["crossed_main_threshold"] = comparison["v1_score"].astype(int).ge(2).ne(comparison["v2_score"].astype(int).ge(2))
-    _write_csv(comparison, Path("artifacts/review/v1_v2_label_comparison.csv"))
+    comparison["score_changed"] = comparison["from_score"].astype(int).ne(comparison["to_score"].astype(int))
+    comparison["crossed_main_threshold"] = comparison["from_score"].astype(int).ge(2).ne(comparison["to_score"].astype(int).ge(2))
+    _write_csv(comparison, Path(f"artifacts/review/{prefix}_label_comparison.csv"))
     old_annual = pd.read_csv(old_annual_path)
     annual_comparison = old_annual[["year", "share_score_ge_2", "share_score_ge_1", "share_score_eq_3"]].rename(
-        columns={column: f"v1_{column}" for column in ["share_score_ge_2", "share_score_ge_1", "share_score_eq_3"]}
+        columns={column: f"from_{column}" for column in ["share_score_ge_2", "share_score_ge_1", "share_score_eq_3"]}
     ).merge(
         annual[["year", "share_score_ge_2", "share_score_ge_1", "share_score_eq_3"]].rename(
-            columns={column: f"v2_{column}" for column in ["share_score_ge_2", "share_score_ge_1", "share_score_eq_3"]}
+            columns={column: f"to_{column}" for column in ["share_score_ge_2", "share_score_ge_1", "share_score_eq_3"]}
         ),
         on="year",
         validate="one_to_one",
     )
     for metric in ["share_score_ge_2", "share_score_ge_1", "share_score_eq_3"]:
-        annual_comparison[f"delta_{metric}"] = annual_comparison[f"v2_{metric}"] - annual_comparison[f"v1_{metric}"]
-    _write_csv(annual_comparison, Path("artifacts/review/v1_v2_annual_comparison.csv"))
+        annual_comparison[f"delta_{metric}"] = annual_comparison[f"to_{metric}"] - annual_comparison[f"from_{metric}"]
+    _write_csv(annual_comparison, Path(f"artifacts/review/{prefix}_annual_comparison.csv"))
     summary = {
         "available": True,
+        "from_version": from_version,
+        "to_version": to_version,
         "items": len(comparison),
         "score_changes": int(comparison["score_changed"].sum()),
         "main_threshold_changes": int(comparison["crossed_main_threshold"].sum()),
-        "v1_score_distribution": old_labels["score"].astype(int).value_counts().sort_index().to_dict(),
-        "v2_score_distribution": labels["score"].astype(int).value_counts().sort_index().to_dict(),
+        "from_score_distribution": old_labels["score"].astype(int).value_counts().sort_index().to_dict(),
+        "to_score_distribution": labels["score"].astype(int).value_counts().sort_index().to_dict(),
         "max_abs_annual_main_share_change": float(annual_comparison["delta_share_score_ge_2"].abs().max()),
     }
-    Path("artifacts/review/v1_v2_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    Path(f"artifacts/review/{prefix}_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     return summary
 
 
 def run_pipeline(ads_path: Path, firms_path: Path, output_dir: Path, *, offline: bool, seed: int) -> None:
-    cache_dir = Path("artifacts/llm") / f"v{PROMPT_VERSION.split('.')[0]}"
+    cache_dir = _cache_dir_for_version(PROMPT_VERSION)
     label_cache = cache_dir / "labels_cache.jsonl"
     require_formal_cache(label_cache, offline=offline)
     _snapshot_previous_version()
@@ -431,10 +464,14 @@ def _run_pipeline_impl(ads_path: Path, firms_path: Path, output_dir: Path, *, of
     match_review = matches.loc[matches["match_method"].ne("exact_normalized")].merge(top_candidates, on="canonical_id", how="left", validate="one_to_one")
     match_review["review_decision"] = match_review["match_status"].map({"matched": "accepted_reviewed_rule", "unmatched": "rejected_auto_match"})
     _write_csv(match_review, Path("artifacts/review/company_match_review.csv"))
-    labels = label_with_deepseek(ads, label_cache, Path("config/ai_rubric.yaml"), allow_network=not offline)
+    labels = label_with_deepseek(ads, label_cache, Path("config/ai_rubric_v2_1.yaml"), allow_network=not offline)
     labels, reliability = run_reliability_audit(ads, labels, seed, allow_network=not offline)
     _write_csv(labels, output_dir / "ai_scores.csv")
-    request_manifest_columns = ["canonical_id", "content_hash", "model", "prompt_version", "schema_version", "prompt_fingerprint", "stage", "thinking", "label_status"]
+    request_manifest_columns = [
+        "canonical_id", "technology_role", "strict_ai", "score", "model_score", "boundary_pair",
+        "content_hash", "model", "prompt_version", "schema_version", "prompt_fingerprint", "stage",
+        "thinking", "label_status", "request_id", "input_tokens", "output_tokens",
+    ]
     _write_csv(labels[request_manifest_columns], Path("artifacts/llm/request_manifest.csv"))
     annual = annual_summary(ads, labels)
     _write_csv(annual, output_dir / "annual_ai_share.csv")
@@ -458,19 +495,31 @@ def _run_pipeline_impl(ads_path: Path, firms_path: Path, output_dir: Path, *, of
         "api_key_present": bool(os.environ.get("DEEPSEEK_API_KEY")),
         "formal_cache_replay": offline,
         "prompt_version": PROMPT_VERSION,
-        "sensitivity_v1_v2": sensitivity,
+        "version_sensitivity": sensitivity,
         "stats": stats,
         "reliability": reliability,
     }
     Path("artifacts/manifests").mkdir(parents=True, exist_ok=True)
     Path("artifacts/manifests/run_metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
-    verify_outputs(output_dir, write_report=True, require_archive=False)
+    verify_outputs(output_dir, write_report=True, require_archive=False, expected_prompt_version=PROMPT_VERSION)
     build_archive()
-    verify_outputs(output_dir, require_archive=True)
+    verify_outputs(output_dir, require_archive=True, expected_prompt_version=PROMPT_VERSION)
 
 
-def verify_outputs(output_dir: Path, *, write_report: bool = False, require_archive: bool = True) -> dict:
-    cache_dir = Path("artifacts/llm") / f"v{PROMPT_VERSION.split('.')[0]}"
+def verify_outputs(
+    output_dir: Path,
+    *,
+    write_report: bool = False,
+    require_archive: bool = True,
+    expected_prompt_version: str | None = None,
+) -> dict:
+    label_path = output_dir / "ai_scores.csv"
+    artifact_prompt_version = PROMPT_VERSION
+    if label_path.exists() and label_path.stat().st_size:
+        versions = pd.read_csv(label_path, usecols=["prompt_version"], dtype=str)["prompt_version"].unique()
+        if len(versions) == 1:
+            artifact_prompt_version = str(versions[0])
+    cache_dir = _cache_dir_for_version(artifact_prompt_version)
     required = [
         Path("data/raw/ra_task_ads.csv"), Path("data/raw/ra_task_firms.csv"),
         Path("data/processed/cleaned_ads.csv"), Path("data/processed/valid_firms.csv"),
@@ -486,6 +535,14 @@ def verify_outputs(output_dir: Path, *, write_report: bool = False, require_arch
     ]
     if require_archive:
         required.append(Path("dist/ra_task_submission.zip"))
+    if artifact_prompt_version == "2.1.0":
+        required.extend(
+            [
+                Path("artifacts/review/v2_v2_1_label_comparison.csv"),
+                Path("artifacts/review/v2_v2_1_annual_comparison.csv"),
+                Path("artifacts/review/v2_v2_1_summary.json"),
+            ]
+        )
     missing = [str(path) for path in required if not path.exists() or path.stat().st_size == 0]
     if missing:
         raise FileNotFoundError(f"Missing outputs: {missing}")
@@ -529,13 +586,42 @@ def verify_outputs(output_dir: Path, *, write_report: bool = False, require_arch
     if len(labels) != 573 or labels["canonical_id"].duplicated().any(): problems.append("label count/key")
     scores = labels["score"].astype(int)
     if not scores.between(0, 3).all(): problems.append("score range")
-    if set(labels["prompt_version"]) != {PROMPT_VERSION}: problems.append("stale prompt version in final labels")
+    if set(labels["prompt_version"]) != {artifact_prompt_version}: problems.append("mixed prompt versions in final labels")
+    if expected_prompt_version is not None and artifact_prompt_version != expected_prompt_version:
+        problems.append(f"stale prompt version in final labels: expected {expected_prompt_version}")
     try:
         source_by_id = ads.set_index("canonical_id").apply(content_text, axis=1).to_dict()
         for _, row in labels.iterrows():
             evidence = [piece for piece in row["evidence"].split("|") if piece]
-            payload = json.dumps({"items": [{"canonical_id": row["canonical_id"], "score": int(row["score"]), "evidence": evidence, "reason": row["reason"], "confidence": row["confidence"]}]}, ensure_ascii=False)
-            validate_batch(payload, {row["canonical_id"]: source_by_id[row["canonical_id"]]})
+            source = source_by_id[row["canonical_id"]]
+            if artifact_prompt_version == "2.1.0":
+                payload = json.dumps(
+                    {
+                        "items": [
+                            {
+                                "canonical_id": row["canonical_id"],
+                                "technology_role": row["technology_role"],
+                                "strict_ai": str(row["strict_ai"]).casefold() == "true",
+                                "score": int(row["score"]),
+                                "boundary_pair": row["boundary_pair"],
+                                "evidence": evidence,
+                                "reason": row["reason"],
+                                "confidence": row["confidence"],
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                )
+                validate_batch(payload, {row["canonical_id"]: source})
+                if int(row["model_score"]) not in range(4):
+                    raise ValueError("invalid preserved model_score")
+            else:
+                if int(row["score"]) > 0 and not evidence:
+                    raise ValueError("positive legacy label has no evidence")
+                if any(_exact_source_span(piece, source) is None for piece in evidence):
+                    raise ValueError("legacy evidence is not a source substring")
+                if row["confidence"] not in {"high", "medium", "low"} or not row["reason"]:
+                    raise ValueError("invalid legacy reason/confidence")
     except (KeyError, TypeError, ValueError) as exc:
         problems.append(f"invalid label evidence/schema: {exc}")
     if labels["label_status"].str.startswith("provisional").any(): problems.append("provisional labels remain")
@@ -585,7 +671,7 @@ def verify_outputs(output_dir: Path, *, write_report: bool = False, require_arch
         "company_matches.industry": int(matches["industry"].eq("").sum()),
         "ai_scores.audit_score": int(labels["audit_score"].eq("").sum()),
     }
-    result = {"status": "PASS", "files_checked": len(required), "canonical_ads": 573, "matched_ads": int(matched_mask.sum()), "listed_companies": int(matches.loc[matched_mask, "stock_code"].nunique()), "unmatched_ads": int((~matched_mask).sum()), "provisional_labels": 0, "reliability_sample": 120, "prompt_version": PROMPT_VERSION}
+    result = {"status": "PASS", "files_checked": len(required), "canonical_ads": 573, "matched_ads": int(matched_mask.sum()), "listed_companies": int(matches.loc[matched_mask, "stock_code"].nunique()), "unmatched_ads": int((~matched_mask).sum()), "provisional_labels": 0, "reliability_sample": 120, "prompt_version": artifact_prompt_version}
     if write_report:
         optional_lines = "\n".join(f"- `{key}`：{value} 个空值" for key, value in optional_blanks.items())
         audit_sentence = f"120 条同模型盲重测中的 {reliability_metrics['disagreements']} 条分歧均已完成上下文裁决。"

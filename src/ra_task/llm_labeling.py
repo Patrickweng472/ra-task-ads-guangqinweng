@@ -13,11 +13,11 @@ from typing import Literal
 import pandas as pd
 import yaml
 from openai import OpenAI
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 MODEL = "deepseek-v4-pro"
-PROMPT_VERSION = "2.0.0"
-SCHEMA_VERSION = "2.0.0"
+PROMPT_VERSION = "2.1.0"
+SCHEMA_VERSION = "2.1.0"
 DEFAULT_TIMEOUT_SECONDS = 90.0
 TECHNICAL_TITLE_RE = re.compile(
     r"AI|人工智能|机器学习|深度学习|算法|软件|数据|系统|网络|信息|自动化|电控|嵌入式|芯片|FPGA|运维|开发|编程|计算机视觉|NLP|LLM",
@@ -25,9 +25,29 @@ TECHNICAL_TITLE_RE = re.compile(
 )
 
 
+TechnologyRole = Literal["none", "auxiliary", "core"]
+BoundaryPair = Literal["none", "0_vs_1", "1_vs_2", "2_vs_3"]
+
+
+def derive_score(technology_role: TechnologyRole, strict_ai: bool) -> int:
+    """Derive the frozen ordinal score from the two construct dimensions."""
+    if strict_ai and technology_role != "core":
+        raise ValueError("strict_ai=true requires technology_role=core")
+    if technology_role == "none":
+        return 0
+    if technology_role == "auxiliary":
+        return 1
+    return 3 if strict_ai else 2
+
+
 class Label(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     canonical_id: str
+    technology_role: TechnologyRole
+    strict_ai: bool
     score: int = Field(ge=0, le=3)
+    boundary_pair: BoundaryPair
     evidence: list[str] = Field(default_factory=list, max_length=5)
     reason: str = Field(min_length=2, max_length=240)
     confidence: Literal["high", "medium", "low"]
@@ -49,13 +69,18 @@ class Label(BaseModel):
         return cleaned
 
     @model_validator(mode="after")
-    def positive_scores_need_evidence(self) -> "Label":
+    def dimensions_score_and_evidence_are_consistent(self) -> "Label":
+        expected = derive_score(self.technology_role, self.strict_ai)
+        if self.score != expected:
+            raise ValueError(f"score {self.score} conflicts with dimensions; expected {expected}")
         if self.score > 0 and not self.evidence:
             raise ValueError("positive scores require source evidence")
         return self
 
 
 class LabelBatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     items: list[Label]
 
 
@@ -107,6 +132,7 @@ def provisional_labels(ads: pd.DataFrame) -> pd.DataFrame:
 def _system_prompt(rubric: dict, thinking: bool, stage: str = "primary") -> str:
     stage_instruction = {
         "primary": "你正在进行主编码；每条独立判断。",
+        "development": "你正在进行提示词开发集盲评；每条独立判断，不得推测人工参照。",
         "audit": "你正在进行盲复核；不得推测或追求与任何先前结果一致。",
         "adjudication": "你正在进行分歧裁决；对照两份盲编码的分数、证据与理由，但必须以原文和量表为最终依据，不得机械多数决。",
     }.get(stage, f"当前编码阶段：{stage}。")
@@ -118,16 +144,40 @@ def _system_prompt(rubric: dict, thinking: bool, stage: str = "primary") -> str:
         f"{stage_instruction}{reasoning_instruction}"
         "\n【判定顺序】"
         "1. 只读取岗位、描述和标签；不得根据公司、行业、年份或‘这类岗位通常会’进行补充猜测。"
-        "2. 先应用核心职责反事实测试：移除技术后，岗位主要产出是否仍成立。"
-        "3. 在 0/1、1/2、2/3 之间逐级比较，选择原文能充分支持的最高等级。"
-        "4. 3 分是严格 AI 研发：必须明确出现 AI、机器学习、深度学习、神经网络、计算机视觉、NLP、大模型、生成式 AI，或清晰的数据驱动模型训练/推理。"
+        "2. 先判 technology_role，再判 strict_ai，最后按确定映射计算 score；不得先凭关键词猜分。"
+        "3. 先过数字技术对象证据门槛。物理、电气、机械、工艺、模拟或半导体技术本身不自动等于数字技术；材料与功率电子技术同样不能自动视为数字技术。"
+        "‘技术、测试、芯片、自动化、智能’等泛词也不自动加分。必须明示软件、数据、信息系统、网络、编程、数字控制、嵌入式、PCB/电子系统开发或其他量表列明的数字对象。"
+        "auxiliary 也必须有至少一个明确数字对象；如果没有任何明确数字对象，technology_role 必须为 none，不能因‘技术支持、测试、安装’等名称给 1。"
+        "但明确的计算建模、物理仿真、量化/估值模型、传统算法或仿真平台开发本身是 core；不要把这类可验证计算交付误压为 none。"
+        "缩写或泛化岗位标题若未被正文职责支持，不能单独作为正分证据。"
+        "4. 再应用核心职责反事实测试：移除原文明示的数字技术后，岗位主要产出是否仍成立。"
+        "业务部门参与系统需求、测试或维护，只有明确承担技术分析、开发、配置、测试执行或运维时才是 core；验收、协调、反馈或普通使用是 auxiliary。"
+        "反复承担企业系统问题处理、桌面/服务器/网络运维、监控报修、用户支持或培训时，系统运维支持本身就是 core；即使写成‘协助处理系统运维’或‘问题咨询’，也不能只因‘协助’二字降为 auxiliary。"
+        "必须区分职责与任职资格：资格要求中的数据库或工程软件知识，不能替代正文中明确的技术交付动作；只有使用某软件的要求而没有清楚职责，通常最多为 auxiliary。"
+        "仅参与线上化/数字化建设、仅协助 AI 项目、仅跟进排期合同验收，且没有模型、数据或系统技术任务时，最多为 auxiliary。"
+        "5. 细分易错对象：明确的 PCB 设计/layout、嵌入式或数字电子系统开发是 core；泛称 MEMS/芯片工艺、封装、材料、模拟器件或电力电子产品不能据此推断为数字技术。"
+        "PLC/控制系统编程、故障诊断和改造是 core；只装配调试机械/非标设备并用 CAD 或传感器知识辅助通常是 auxiliary。"
+        "普通硬件产品测试或使用现成仪器统计数据通常不是 core；只有明确的软件/数字硬件测试设计、自动化测试、协议测试、日志缺陷定位或测试平台开发才是 core。"
+        "技术支持只有在支持软件、信息系统、网络、嵌入式或数字硬件并承担配置诊断部署时才是 core；一般产品文档、认证、安装或销售支持不得因‘技术支持’名称加分。"
+        "技术售前只有原文明示方案设计、PoC、配置、诊断、部署或安全评估等技术动作才是 core；深厚技术知识以及产品讲解、文档和培训本身仍是销售辅助，不得推断未写出的方案交付。"
+        "业务岗位若系统需求/测试只是众多业务职责之一，且数据库开发仅出现在任职资格，没有测试脚本、SQL、配置或缺陷定位等动作，通常为 auxiliary。"
+        "只有任职资格、软件熟练度或行业板件经验而没有岗位职责时，不得根据岗位名称推测隐含工作；明确写出PCB layout、CAM制作、板件设计等交付才可判core。"
+        "广告投放、电商运营、SEO/SEM、平台账户优化等岗位即使以数据为导向并熟练使用投放平台或Excel，主要产出仍是营销运营时为 auxiliary；不得把平台操作本身判成系统/数据技术核心。"
+        "台账更新、日常数据运营、常规统计或报表是 auxiliary；若职责明确要求经营数据治理、BI报表体系设计、量化模型或数据支持模式建设，数据交付本身是 core。"
+        "6. 在 0/1、1/2、2/3 之间逐级比较，选择原文能充分支持的最高等级。"
+        "7. 3 分是严格 AI 研发：必须明确出现 AI、机器学习、深度学习、神经网络、计算机视觉、NLP、大模型、生成式 AI，或清晰的数据驱动模型训练/推理。"
+        "机器视觉或模式识别若与视觉算法设计、开发、调试等核心职责同时出现，按冻结口径属于严格 AI；只有图像处理工具、传统 ISP 或一般视觉规则算法而无机器视觉/模式识别语义时仍为 2。"
         "金融定价模型、风险计量、传统统计建模、物理仿真、器件物理模型、控制算法、通信算法、大数据/ETL 都不是 3 分，除非原文另外明确说明 AI/ML。"
-        "5. evidence 必须是原文连续出现的 1–5 个支持性短语，不得改写。普通岗位标题不能单独支持正分。"
-        "6. reason 必须说明为什么是本等级，以及为什么不是相邻等级。"
-        "7. confidence 按可操作标准输出：high=至少两处一致明确证据且边界清晰；medium=仅一处明确证据或需轻微边界判断；low=信息不足、矛盾或相邻等级均有合理解释。"
+        "8. evidence 必须是原文连续出现的 1–5 个支持性短语，不得改写。普通岗位标题不能单独支持正分。"
+        "9. boundary_pair 只可为 none、0_vs_1、1_vs_2、2_vs_3，表示本条最关键的相邻边界；无实际边界疑问才用 none。"
+        "10. reason 必须依次说明数字技术对象证据、technology_role 的反事实判断、为何不是相邻等级；出现 AI 词时还要说明是否承担严格 AI 工作。"
+        "11. confidence 按可操作标准输出：high=至少两处一致明确证据且边界清晰；medium=仅一处明确证据或需轻微边界判断；low=信息不足、矛盾或相邻等级均有合理解释。"
         f"\n【完整量表与边界例子】{rubric_json}"
         "\n【输出契约】只输出一个 JSON 对象，格式为 {\"items\":[...]}。"
-        "每项必须且只能包含 canonical_id、score(0-3 整数)、evidence(字符串数组)、reason(简洁边界理由)、confidence(high/medium/low)。"
+        "每项必须且只能包含 canonical_id、technology_role(none/auxiliary/core)、strict_ai(布尔值)、score(0-3 整数)、"
+        "boundary_pair(none/0_vs_1/1_vs_2/2_vs_3)、evidence(字符串数组)、reason(简洁边界理由)、confidence(high/medium/low)。"
+        "reason 不得超过 180 个汉字；confidence 必须作为独立字段输出，绝不能写进 reason 或省略。"
+        "score 必须等于确定映射：none→0；auxiliary→1；core 且 strict_ai=false→2；core 且 strict_ai=true→3。"
         "0 分 evidence 可为空；1–3 分 evidence 不得为空。不输出 Markdown、代码块、思维过程或额外字段。"
     )
 
@@ -232,7 +282,10 @@ def _cache_record_is_valid(
                 "items": [
                     {
                         "canonical_id": record.get("canonical_id"),
+                        "technology_role": record.get("technology_role"),
+                        "strict_ai": record.get("strict_ai"),
                         "score": record.get("score"),
+                        "boundary_pair": record.get("boundary_pair"),
                         "evidence": evidence,
                         "reason": record.get("reason"),
                         "confidence": record.get("confidence"),
@@ -242,6 +295,8 @@ def _cache_record_is_valid(
             ensure_ascii=False,
         )
         validated = validate_batch(payload, {item_id: source})[0]
+        if record.get("model_score") != validated.score:
+            return False
         record["evidence"] = "|".join(validated.evidence)
         record["confidence"] = validated.confidence
     except (TypeError, ValueError):
@@ -351,12 +406,17 @@ def label_with_deepseek(
                 content = response.choices[0].message.content or ""
                 labels = validate_batch(content, expected)
                 usage = getattr(response, "usage", None)
+                request_id = hashlib.sha256(
+                    f"{fingerprint}|{'|'.join(item_id for item_id, _, _, _ in batch)}".encode("utf-8")
+                ).hexdigest()
                 records = []
                 for label in labels:
                     digest = next(value for item_id, _, value, _ in batch if item_id == label.canonical_id)
                     records.append(
                         {
                             **label.model_dump(),
+                            "model_score": label.score,
+                            "request_id": request_id,
                             "evidence": "|".join(label.evidence),
                             "model": MODEL,
                             "prompt_version": PROMPT_VERSION,
@@ -373,6 +433,8 @@ def label_with_deepseek(
                 return records
             except Exception as exc:  # Provider SDK exposes multiple error subclasses.
                 last_error = exc
+                if isinstance(exc, ValueError) and len(batch) > 1:
+                    raise RuntimeError("batch schema/evidence validation failed; retrying item by item") from exc
                 status = getattr(exc, "status_code", None)
                 if status in {401, 402}:
                     raise

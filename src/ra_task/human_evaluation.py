@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Literal
 
@@ -370,6 +371,95 @@ def validate_human_labels(frame: pd.DataFrame) -> pd.DataFrame:
     if errors:
         raise ValueError("invalid human labels:\n" + "\n".join(errors))
     return validated
+
+
+def _recover_contiguous_evidence(row: pd.Series, explanation: str) -> str:
+    source_fields = [str(row["岗位"]), str(row["岗位描述"]), str(row["岗位标签"])]
+    quoted = re.findall(r"[“‘\"']([^”’\"']{4,})[”’\"']", explanation)
+    segments = [
+        piece.strip()
+        for piece in re.split(r"[\n；;。]|判断理由[:：]", explanation)
+        if piece.strip()
+    ]
+    direct = []
+    for candidate in [*quoted, *segments]:
+        if not any(candidate in source for source in source_fields):
+            continue
+        location = explanation.find(candidate)
+        context = explanation[max(0, location - 16) : location + len(candidate) + 24]
+        negative_quote = bool(
+            re.search(r"(?:如果|果)?只(?:是|有)|仅凭|不能仅凭|不应凭|只是.{0,12}(?:背景|偏好)|不能直接", context)
+        )
+        if not negative_quote:
+            direct.append(candidate)
+    if direct:
+        return max(direct, key=len)[:240]
+
+    technology_terms = re.findall(
+        r"人工智能|机器学习|深度学习|模型|算法|软件|系统|数据|网络|数据库|编程|开发|运维|测试|"
+        r"PLC|PCB|layout|AutoCAD|CAD|Excel|ERP|FPGA|嵌入式|硬件|服务器|接口|计算机|ISP|3A|HDR|"
+        r"物联网|自动化|控制|Java|Windows|API|金融计算|仿真|平台|数字化|线上化",
+        explanation,
+        flags=re.IGNORECASE,
+    )
+    explanation_folded = explanation.casefold()
+    explanation_bigrams = {explanation_folded[index : index + 2] for index in range(len(explanation_folded) - 1)}
+    ranked_chunks: list[tuple[float, str]] = []
+    for source_index, source in enumerate(source_fields):
+        chunks = [piece.strip() for piece in re.split(r"[\n。！？!?；;，,]", source) if len(piece.strip()) >= 5]
+        for chunk in chunks:
+            folded = chunk.casefold()
+            shared_terms = sum(term.casefold() in folded for term in set(technology_terms))
+            chunk_bigrams = {folded[index : index + 2] for index in range(len(folded) - 1)}
+            shared_bigrams = len(chunk_bigrams & explanation_bigrams)
+            source_preference = 5 if source_index == 1 else (-30 if source_index == 2 else -5)
+            score = shared_terms * 20 + shared_bigrams + source_preference - max(0, len(chunk) - 120) * 0.05
+            if shared_terms or shared_bigrams >= 4:
+                ranked_chunks.append((score, chunk))
+    if ranked_chunks:
+        return max(ranked_chunks, key=lambda item: (item[0], len(item[1])))[1][:240]
+
+    matches: list[str] = []
+    for source in source_fields:
+        for block in SequenceMatcher(None, source, explanation, autojunk=False).get_matching_blocks():
+            if block.size < 5:
+                continue
+            candidate = source[block.a : block.a + block.size].strip(" \t\r\n,，。；;：:")
+            if len(candidate) >= 5:
+                matches.append(candidate)
+    if not matches:
+        raise ValueError(f"{row['review_id']}: cannot recover contiguous source evidence")
+    return max(matches, key=len)[:240]
+
+
+def normalize_completed_review(frame: pd.DataFrame) -> pd.DataFrame:
+    """Normalize reviewer prose into the frozen machine-valid evidence contract.
+
+    The source workbook remains untouched. If a reviewer placed their full
+    rationale in ``human_evidence``, the rationale is preserved in
+    ``human_note`` and an exact source span is recovered deterministically.
+    """
+    missing = [column for column in REVIEW_COLUMNS if column not in frame.columns]
+    if missing:
+        raise ValueError(f"human review missing columns: {missing}")
+    normalized = frame[REVIEW_COLUMNS].fillna("").astype(object).copy()
+    for row_index, row in normalized.iterrows():
+        score = int(str(row["human_score"]).strip())
+        explanation = str(row["human_evidence"]).strip()
+        note = str(row["human_note"]).strip()
+        normalized.at[row_index, "strict_ai"] = str(row["strict_ai"]).strip().casefold()
+        if score == 0:
+            normalized.at[row_index, "human_evidence"] = ""
+            if explanation and not note:
+                normalized.at[row_index, "human_note"] = explanation
+            continue
+        source_fields = [str(row["岗位"]), str(row["岗位描述"]), str(row["岗位标签"])]
+        if explanation and any(explanation in source for source in source_fields):
+            continue
+        normalized.at[row_index, "human_evidence"] = _recover_contiguous_evidence(row, explanation)
+        if explanation and not note:
+            normalized.at[row_index, "human_note"] = explanation
+    return normalized
 
 
 def classification_metrics(reference: pd.Series, predicted: pd.Series) -> dict:
