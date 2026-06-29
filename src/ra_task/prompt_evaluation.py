@@ -45,7 +45,15 @@ def prepare_development_reference(
 def _prediction_schema_is_valid(row: pd.Series) -> bool:
     try:
         score = int(row["score"])
-        derived = derive_score(str(row["technology_role"]), bool(row["strict_ai"]))  # type: ignore[arg-type]
+        strict_value = row["strict_ai"]
+        if isinstance(strict_value, bool):
+            strict_ai = strict_value
+        else:
+            normalized = str(strict_value).strip().casefold()
+            if normalized not in {"true", "false"}:
+                return False
+            strict_ai = normalized == "true"
+        derived = derive_score(str(row["technology_role"]), strict_ai)  # type: ignore[arg-type]
         evidence = str(row.get("evidence", "")).strip()
         return score == derived and (score == 0 or bool(evidence))
     except (KeyError, TypeError, ValueError):
@@ -90,7 +98,9 @@ def evaluate_predictions(reference: pd.DataFrame, predictions: pd.DataFrame) -> 
         raise ValueError(f"invalid v2.1 prediction schema for IDs: {bad_ids}")
 
     if "model_score" in model.columns:
-        if not pd.to_numeric(model["model_score"]).eq(pd.to_numeric(model["score"])).all():
+        score_matches = pd.to_numeric(model["model_score"]).eq(pd.to_numeric(model["score"]))
+        adjudicated = model.get("label_status", pd.Series("", index=model.index)).eq("llm_adjudicated")
+        if not (score_matches | adjudicated).all():
             raise ValueError("preserved model_score conflicts with the validated model score")
         model = model.drop(columns=["model_score"])
 

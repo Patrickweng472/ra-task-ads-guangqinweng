@@ -2,14 +2,14 @@
   "status": "completed",
   "method": "same_model_blind_retest_with_contextual_adjudication",
   "independent_human_reliability": false,
-  "targeted_cases": 50,
+  "targeted_cases": 48,
   "low_confidence_cases": 1,
-  "rule_model_threshold_conflicts": 48,
+  "rule_model_threshold_conflicts": 46,
   "strict_score3_cases": 2,
   "sample_size": 120,
-  "disagreements": 18,
-  "exact_agreement": 0.85,
-  "within_one_agreement": 0.9916666666666667,
-  "binary_agreement_score_ge_2": 0.9166666666666666,
-  "quadratic_weighted_kappa": 0.871742671009772
+  "disagreements": 17,
+  "exact_agreement": 0.8583333333333333,
+  "within_one_agreement": 1.0,
+  "binary_agreement_score_ge_2": 0.9583333333333334,
+  "quadratic_weighted_kappa": 0.89281210592686
 }

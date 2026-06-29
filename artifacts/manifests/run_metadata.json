@@ -1,30 +1,32 @@
 {
-  "run_started_utc": "2026-06-28T02:50:53.166837+00:00",
-  "run_finished_utc": "2026-06-28T02:50:58.225849+00:00",
-  "elapsed_seconds": 5.059,
+  "run_started_utc": "2026-06-29T17:56:28.295744+00:00",
+  "run_finished_utc": "2026-06-29T17:56:32.867598+00:00",
+  "elapsed_seconds": 4.572,
   "seed": 20260627,
   "network_allowed": false,
   "api_key_present": false,
   "formal_cache_replay": true,
-  "prompt_version": "2.0.0",
-  "sensitivity_v1_v2": {
+  "prompt_version": "2.1.0",
+  "version_sensitivity": {
     "available": true,
+    "from_version": "v2",
+    "to_version": "v2.1",
     "items": 573,
-    "score_changes": 93,
-    "main_threshold_changes": 31,
-    "v1_score_distribution": {
-      "0": 291,
-      "1": 198,
-      "2": 75,
-      "3": 9
-    },
-    "v2_score_distribution": {
+    "score_changes": 63,
+    "main_threshold_changes": 11,
+    "from_score_distribution": {
       "0": 303,
       "1": 209,
       "2": 59,
       "3": 2
     },
-    "max_abs_annual_main_share_change": 0.2
+    "to_score_distribution": {
+      "0": 310,
+      "1": 205,
+      "2": 56,
+      "3": 2
+    },
+    "max_abs_annual_main_share_change": 0.05128205128205124
   },
   "stats": {
     "raw_ads": 612,
@@ -39,15 +41,15 @@
     "status": "completed",
     "method": "same_model_blind_retest_with_contextual_adjudication",
     "independent_human_reliability": false,
-    "targeted_cases": 50,
+    "targeted_cases": 48,
     "low_confidence_cases": 1,
-    "rule_model_threshold_conflicts": 48,
+    "rule_model_threshold_conflicts": 46,
     "strict_score3_cases": 2,
     "sample_size": 120,
-    "disagreements": 18,
-    "exact_agreement": 0.85,
-    "within_one_agreement": 0.9916666666666667,
-    "binary_agreement_score_ge_2": 0.9166666666666666,
-    "quadratic_weighted_kappa": 0.871742671009772
+    "disagreements": 17,
+    "exact_agreement": 0.8583333333333333,
+    "within_one_agreement": 1.0,
+    "binary_agreement_score_ge_2": 0.9583333333333334,
+    "quadratic_weighted_kappa": 0.89281210592686
   }
 }

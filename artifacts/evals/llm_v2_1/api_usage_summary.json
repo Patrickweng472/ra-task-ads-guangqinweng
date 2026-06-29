@@ -1,0 +1,8 @@
+{
+  "cache_files": 8,
+  "unique_api_requests_with_usage": 156,
+  "input_tokens": 815910,
+  "output_tokens": 167576,
+  "estimated_max_cost_cny_without_cache_discount": 3.453186,
+  "pricing_source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing"
+}
