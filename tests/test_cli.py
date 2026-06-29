@@ -18,3 +18,10 @@ def test_v2_1_development_evaluation_command_is_versioned_and_offline_capable() 
     assert args.command == "evaluate-v2-1-development"
     assert args.round == 2
     assert args.offline is True
+
+
+def test_v2_1_stability_command_accepts_only_followup_trials() -> None:
+    args = build_parser().parse_args(["evaluate-v2-1-stability", "--trial", "2", "--offline"])
+    assert args.command == "evaluate-v2-1-stability"
+    assert args.trial == 2
+    assert args.offline is True

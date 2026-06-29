@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from ra_task.prompt_evaluation import evaluate_predictions, prepare_development_reference
+from ra_task.prompt_evaluation import evaluate_predictions, prepare_development_reference, stability_metrics
 
 
 def _completed_rows() -> pd.DataFrame:
@@ -86,3 +86,18 @@ def test_evaluate_predictions_records_threshold_error_direction_and_metrics() ->
     assert report["metrics"]["binary_agreement_score_ge_2"] == 1 / 3
     assert report["error_counts"]["threshold_false_positive"] == 1
     assert report["schema_validity_rate"] == 1.0
+
+
+def test_stability_metrics_require_all_three_frozen_runs_to_agree_per_item() -> None:
+    runs = [
+        pd.DataFrame({"canonical_id": ["10", "20"], "score": [1, 2]}),
+        pd.DataFrame({"canonical_id": ["10", "20"], "score": [1, 2]}),
+        pd.DataFrame({"canonical_id": ["10", "20"], "score": [1, 1]}),
+    ]
+
+    metrics = stability_metrics(runs)
+
+    assert metrics["trials"] == 3
+    assert metrics["exact_score_all_three"] == 0.5
+    assert metrics["main_threshold_all_three"] == 0.5
+    assert metrics["passes_main_threshold_stability"] is False
