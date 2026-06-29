@@ -91,6 +91,8 @@ def test_v2_1_prompt_encodes_review_discovered_boundaries_without_copying_ads() 
         "协助处理系统运维",
         "产品讲解、文档和培训",
         "没有任何明确数字对象",
+        "reason 不得超过 180 个汉字",
+        "confidence 必须作为独立字段",
     ]:
         assert phrase in prompt
     assert "联合质量工程师(JQE)" not in prompt
