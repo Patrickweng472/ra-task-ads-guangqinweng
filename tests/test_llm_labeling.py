@@ -88,6 +88,9 @@ def test_v2_1_prompt_encodes_review_discovered_boundaries_without_copying_ads() 
         "机器视觉或模式识别",
         "明确的计算建模、物理仿真",
         "日常数据运营",
+        "协助处理系统运维",
+        "产品讲解、文档和培训",
+        "没有任何明确数字对象",
     ]:
         assert phrase in prompt
     assert "联合质量工程师(JQE)" not in prompt
