@@ -70,7 +70,8 @@ def test_evaluate_predictions_records_threshold_error_direction_and_metrics() ->
         {
             "canonical_id": ["10", "20", "30"],
             "score": [2, 1, 3],
-            "model_score": [2, 1, 3],
+            "model_score": [0, 1, 3],
+            "label_status": ["llm_adjudicated", "llm_primary", "llm_primary"],
             "technology_role": ["core", "auxiliary", "core"],
             "strict_ai": ["False", "false", "True"],
             "evidence": ["AI项目", "数据平台", "机器学习"],
