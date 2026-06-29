@@ -10,15 +10,20 @@ import ra_task.llm_labeling as llm
 from ra_task.llm_labeling import content_hash, label_with_deepseek, provisional_labels, validate_batch
 
 
+def _dimensions(score: int) -> dict:
+    role, strict_ai = {0: ("none", False), 1: ("auxiliary", False), 2: ("core", False), 3: ("core", True)}[score]
+    return {"technology_role": role, "strict_ai": strict_ai, "boundary_pair": "none"}
+
+
 def test_validate_batch_checks_ids_and_evidence() -> None:
-    payload = json.dumps({"items": [{"canonical_id": "1", "score": 3, "evidence": ["机器学习"], "reason": "核心职责", "confidence": "high"}]}, ensure_ascii=False)
+    payload = json.dumps({"items": [{"canonical_id": "1", **_dimensions(3), "score": 3, "evidence": ["机器学习"], "reason": "核心职责", "confidence": "high"}]}, ensure_ascii=False)
     labels = validate_batch(payload, {"1": "岗位要求机器学习经验"})
     assert labels[0].score == 3
     with pytest.raises(ValueError):
         validate_batch(payload, {"2": "岗位要求机器学习经验"})
-    zero = json.dumps({"items": [{"canonical_id": "1", "score": 0, "evidence": [], "reason": "没有技术内容", "confidence": "high"}]}, ensure_ascii=False)
+    zero = json.dumps({"items": [{"canonical_id": "1", **_dimensions(0), "score": 0, "evidence": [], "reason": "没有技术内容", "confidence": "high"}]}, ensure_ascii=False)
     assert validate_batch(zero, {"1": "普通销售岗位"})[0].score == 0
-    paraphrase = json.dumps({"items": [{"canonical_id": "1", "score": 2, "evidence": ["不存在的改写"], "reason": "技术岗位", "confidence": "medium"}]}, ensure_ascii=False)
+    paraphrase = json.dumps({"items": [{"canonical_id": "1", **_dimensions(2), "score": 2, "evidence": ["不存在的改写"], "reason": "技术岗位", "confidence": "medium"}]}, ensure_ascii=False)
     with pytest.raises(ValueError, match="evidence"):
         validate_batch(paraphrase, {"1": "岗位：软件工程师\n描述：开发系统"})
 
@@ -78,6 +83,11 @@ def test_v2_1_prompt_encodes_review_discovered_boundaries_without_copying_ads() 
         "仅协助 AI 项目",
         "业务部门参与系统需求、测试或维护",
         "普通硬件产品测试",
+        "广告投放、电商运营、SEO/SEM",
+        "资格要求中的数据库或工程软件知识",
+        "机器视觉或模式识别",
+        "明确的计算建模、物理仿真",
+        "日常数据运营",
     ]:
         assert phrase in prompt
     assert "联合质量工程师(JQE)" not in prompt
@@ -86,7 +96,7 @@ def test_v2_1_prompt_encodes_review_discovered_boundaries_without_copying_ads() 
 
 
 def test_generic_title_cannot_silently_replace_supporting_evidence() -> None:
-    payload = json.dumps({"items": [{"canonical_id": "1", "score": 1, "evidence": ["销售"], "reason": "需使用办公软件", "confidence": "medium"}]}, ensure_ascii=False)
+    payload = json.dumps({"items": [{"canonical_id": "1", **_dimensions(1), "score": 1, "evidence": ["销售"], "reason": "需使用办公软件", "confidence": "medium"}]}, ensure_ascii=False)
     with pytest.raises(ValueError, match="support"):
         validate_batch(payload, {"1": "岗位：销售\n描述：熟练使用办公软件\n标签："})
 
@@ -94,7 +104,7 @@ def test_generic_title_cannot_silently_replace_supporting_evidence() -> None:
 def test_up_to_five_exact_supporting_phrases_are_allowed() -> None:
     evidence = ["网络运行", "ERP系统", "数据备份", "系统维护"]
     source = "岗位：网络管理员\n描述：负责网络运行、ERP系统、数据备份和系统维护\n标签：IT"
-    payload = json.dumps({"items": [{"canonical_id": "1", "score": 2, "evidence": evidence, "reason": "系统运维是核心而非辅助使用", "confidence": "high"}]}, ensure_ascii=False)
+    payload = json.dumps({"items": [{"canonical_id": "1", **_dimensions(2), "score": 2, "evidence": evidence, "reason": "系统运维是核心而非辅助使用", "confidence": "high"}]}, ensure_ascii=False)
     assert validate_batch(payload, {"1": source})[0].evidence == evidence
 
 
@@ -106,6 +116,7 @@ def test_excess_valid_evidence_is_deterministically_capped_at_five() -> None:
             "items": [
                 {
                     "canonical_id": "1",
+                    **_dimensions(2),
                     "score": 2,
                     "evidence": evidence,
                     "reason": "系统实施是核心职责，不是辅助工具使用",
@@ -124,6 +135,7 @@ def test_single_evidence_positive_label_cannot_claim_high_confidence() -> None:
             "items": [
                 {
                     "canonical_id": "1",
+                    **_dimensions(1),
                     "score": 1,
                     "evidence": ["熟练使用财务软件"],
                     "reason": "软件是财务工作的辅助工具，不是技术核心产出",
@@ -154,6 +166,7 @@ def test_punctuation_normalized_evidence_is_repaired_to_exact_source_span() -> N
             "items": [
                 {
                     "canonical_id": "1",
+                    **_dimensions(1),
                     "score": 1,
                     "evidence": [model_evidence],
                     "reason": "广告投放工具是运营辅助能力，而非技术开发核心产出",
@@ -210,7 +223,7 @@ def test_complete_formal_cache_replays_without_api_key(tmp_path: Path, monkeypat
     rubric.write_text(Path("config/ai_rubric.yaml").read_text(encoding="utf-8"), encoding="utf-8")
     rubric_data = yaml.safe_load(rubric.read_text(encoding="utf-8"))
     fingerprint = llm.prompt_fingerprint(rubric_data, stage="primary", thinking=False)
-    record = {"canonical_id": "1", "score": 2, "evidence": "数据平台", "reason": "数字技术是核心职责，而不是辅助工具", "confidence": "medium", "model": llm.MODEL, "prompt_version": llm.PROMPT_VERSION, "schema_version": llm.SCHEMA_VERSION, "prompt_fingerprint": fingerprint, "stage": "primary", "thinking": False, "content_hash": content_hash(text, fingerprint), "label_status": "llm_primary"}
+    record = {"canonical_id": "1", **_dimensions(2), "score": 2, "model_score": 2, "evidence": "数据平台", "reason": "数字技术是核心职责，而不是辅助工具", "confidence": "medium", "model": llm.MODEL, "prompt_version": llm.PROMPT_VERSION, "schema_version": llm.SCHEMA_VERSION, "prompt_fingerprint": fingerprint, "stage": "primary", "thinking": False, "content_hash": content_hash(text, fingerprint), "label_status": "llm_primary"}
     cache = tmp_path / "cache.jsonl"
     cache.write_text(json.dumps(record, ensure_ascii=False) + "\n", encoding="utf-8")
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
@@ -226,7 +239,7 @@ def test_offline_replay_compacts_cache_to_current_valid_records(tmp_path: Path) 
     rubric.write_text(Path("config/ai_rubric.yaml").read_text(encoding="utf-8"), encoding="utf-8")
     fingerprint = llm.prompt_fingerprint(yaml.safe_load(rubric.read_text(encoding="utf-8")), stage="primary", thinking=False)
     valid = {
-        "canonical_id": "1", "score": 2, "evidence": "开发数据平台", "reason": "数据平台开发是核心职责，不是辅助使用", "confidence": "high",
+        "canonical_id": "1", **_dimensions(2), "score": 2, "model_score": 2, "evidence": "开发数据平台", "reason": "数据平台开发是核心职责，不是辅助使用", "confidence": "high",
         "model": llm.MODEL, "prompt_version": llm.PROMPT_VERSION, "schema_version": llm.SCHEMA_VERSION,
         "prompt_fingerprint": fingerprint, "stage": "primary", "thinking": False,
         "content_hash": content_hash(text, fingerprint), "label_status": "llm_primary",
@@ -257,7 +270,7 @@ def test_stale_or_foreign_cache_record_is_not_accepted(tmp_path: Path) -> None:
 
 def test_empty_response_retries_and_writes_valid_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ads = pd.DataFrame([{"canonical_id": "1", "岗位": "算法工程师", "岗位描述": "开发机器学习模型", "岗位标签": "AI"}])
-    valid = json.dumps({"items": [{"canonical_id": "1", "score": 3, "evidence": ["机器学习"], "reason": "AI研发", "confidence": "high"}]}, ensure_ascii=False)
+    valid = json.dumps({"items": [{"canonical_id": "1", **_dimensions(3), "score": 3, "evidence": ["机器学习"], "reason": "AI研发", "confidence": "high"}]}, ensure_ascii=False)
 
     class Completions:
         def __init__(self) -> None:
@@ -276,6 +289,7 @@ def test_empty_response_retries_and_writes_valid_cache(tmp_path: Path, monkeypat
     result = label_with_deepseek(ads, tmp_path / "cache.jsonl", rubric, client=client)
     assert completions.calls == 2
     assert result.loc[0, "score"] == 3
+    assert result.loc[0, "model_score"] == 3
 
 
 def test_incomplete_offline_cache_fails_explicitly(tmp_path: Path) -> None:
