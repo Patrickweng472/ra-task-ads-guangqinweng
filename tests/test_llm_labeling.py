@@ -23,6 +23,68 @@ def test_validate_batch_checks_ids_and_evidence() -> None:
         validate_batch(paraphrase, {"1": "岗位：软件工程师\n描述：开发系统"})
 
 
+def test_v2_1_schema_requires_dimensions_and_derives_consistent_score() -> None:
+    source = "岗位：联合质量工程师\n描述：协助AI项目推进和跨部门沟通\n标签：质量"
+    payload = json.dumps(
+        {
+            "items": [
+                {
+                    "canonical_id": "1",
+                    "technology_role": "auxiliary",
+                    "strict_ai": False,
+                    "score": 1,
+                    "boundary_pair": "1_vs_2",
+                    "evidence": ["协助AI项目推进"],
+                    "reason": "AI只作为项目背景，质量协调仍是主业，不承担模型、数据或系统技术工作。",
+                    "confidence": "high",
+                }
+            ]
+        },
+        ensure_ascii=False,
+    )
+
+    label = validate_batch(payload, {"1": source})[0]
+
+    assert label.technology_role == "auxiliary"
+    assert label.strict_ai is False
+    assert label.boundary_pair == "1_vs_2"
+    assert llm.derive_score(label.technology_role, label.strict_ai) == label.score
+
+
+def test_v2_1_schema_rejects_score_dimension_conflicts_and_extra_fields() -> None:
+    base = {
+        "canonical_id": "1",
+        "technology_role": "auxiliary",
+        "strict_ai": False,
+        "score": 2,
+        "boundary_pair": "1_vs_2",
+        "evidence": ["协助AI项目推进"],
+        "reason": "只协调AI项目，不承担技术工作。",
+        "confidence": "medium",
+    }
+    source = {"1": "岗位：质量工程师\n描述：协助AI项目推进\n标签：质量"}
+    with pytest.raises(ValueError, match="conflicts"):
+        validate_batch(json.dumps({"items": [base]}, ensure_ascii=False), source)
+    with pytest.raises(ValueError):
+        validate_batch(json.dumps({"items": [{**base, "score": 1, "unexpected": "leak"}]}, ensure_ascii=False), source)
+
+
+def test_v2_1_prompt_encodes_review_discovered_boundaries_without_copying_ads() -> None:
+    rubric = yaml.safe_load(Path("config/ai_rubric_v2_1.yaml").read_text(encoding="utf-8"))
+    prompt = llm._system_prompt(rubric, thinking=False)
+    for phrase in [
+        "先判 technology_role",
+        "物理、电气、机械、工艺、模拟或半导体技术本身不自动等于数字技术",
+        "仅协助 AI 项目",
+        "业务部门参与系统需求、测试或维护",
+        "普通硬件产品测试",
+    ]:
+        assert phrase in prompt
+    assert "联合质量工程师(JQE)" not in prompt
+    assert llm.PROMPT_VERSION == "2.1.0"
+    assert llm.SCHEMA_VERSION == "2.1.0"
+
+
 def test_generic_title_cannot_silently_replace_supporting_evidence() -> None:
     payload = json.dumps({"items": [{"canonical_id": "1", "score": 1, "evidence": ["销售"], "reason": "需使用办公软件", "confidence": "medium"}]}, ensure_ascii=False)
     with pytest.raises(ValueError, match="support"):

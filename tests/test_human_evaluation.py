@@ -11,6 +11,7 @@ from ra_task.human_evaluation import (
     build_sampling_frame,
     classification_metrics,
     load_boundary_cases,
+    normalize_completed_review,
     prepare_human_evaluation,
     score_from_dimensions,
     select_human_reference_samples,
@@ -18,6 +19,40 @@ from ra_task.human_evaluation import (
     validate_human_labels,
     write_review_workbook,
 )
+
+
+def test_normalize_completed_review_recovers_contiguous_evidence_without_overwriting_source() -> None:
+    frame = _completed_review(
+        human_evidence=(
+            "原文明示‘使用SQL完成经营数据分析’，这说明数据分析是岗位主要产出，"
+            "移除数据能力后岗位无法成立，因此为2分而不是1分。"
+        ),
+        human_note="",
+    )
+
+    normalized = normalize_completed_review(frame)
+
+    assert normalized.loc[0, "human_evidence"] == "使用SQL完成经营数据分析"
+    assert "因此为2分" in normalized.loc[0, "human_note"]
+    validate_human_labels(normalized)
+
+
+def test_normalize_completed_review_clears_zero_score_evidence_and_preserves_reason_in_note() -> None:
+    frame = _completed_review(
+        human_score="0",
+        technology_role="none",
+        strict_ai="false",
+        human_evidence="岗位只负责客户接待，因此没有明示数字技术。",
+        human_note="",
+        岗位="前台",
+        岗位描述="负责客户接待",
+        岗位标签="行政",
+    )
+
+    normalized = normalize_completed_review(frame)
+
+    assert normalized.loc[0, "human_evidence"] == ""
+    assert "没有明示数字技术" in normalized.loc[0, "human_note"]
 
 
 def _real_selection() -> pd.DataFrame:
