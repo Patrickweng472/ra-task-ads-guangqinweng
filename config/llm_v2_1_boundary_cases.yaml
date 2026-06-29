@@ -1,0 +1,38 @@
+version: "2.1.0"
+purpose: 冻结口径的合成边界评测；文本不得复制人工开发集或留出集原文。
+cases:
+  - {id: presales_core_01, topic: technical_presales, text: "为客户设计网络安全方案并完成漏洞诊断与设备配置", technology_role: core, strict_ai: false, score: 2}
+  - {id: presales_core_02, topic: technical_presales, text: "负责数据库产品 PoC、部署架构设计和现场技术答疑", technology_role: core, strict_ai: false, score: 2}
+  - {id: presales_aux_01, topic: technical_presales, text: "销售云产品，了解产品功能并将技术问题转交售前顾问", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: presales_aux_02, topic: technical_presales, text: "完成销售指标，能向客户介绍软件产品卖点", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: ai_coord_01, topic: ai_coordination, text: "协助人工智能项目排期、会议组织和跨部门沟通", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: ai_coord_02, topic: ai_coordination, text: "跟进大模型项目合同、预算和验收材料", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: ai_coord_03, topic: ai_coordination, text: "管理机器学习团队并负责模型训练方案和上线评估", technology_role: core, strict_ai: true, score: 3}
+  - {id: engineering_aux_01, topic: engineering_tools, text: "机械结构设计，熟练使用 CAD 绘制零件图", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: engineering_aux_02, topic: engineering_tools, text: "财务会计岗位，使用 ERP 完成凭证录入和月结", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: engineering_aux_03, topic: engineering_tools, text: "建筑设计师，使用 BIM 软件完成建筑方案表达", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: engineering_core_01, topic: engineering_tools, text: "负责 ERP 系统二次开发、接口集成和故障处理", technology_role: core, strict_ai: false, score: 2}
+  - {id: engineering_core_02, topic: engineering_tools, text: "开发 CAD 插件并维护几何计算模块", technology_role: core, strict_ai: false, score: 2}
+  - {id: operations_core_01, topic: system_operations, text: "维护 Linux 服务器、部署服务并处理线上故障", technology_role: core, strict_ai: false, score: 2}
+  - {id: operations_core_02, topic: system_operations, text: "负责数据库备份、性能监控和容灾演练", technology_role: core, strict_ai: false, score: 2}
+  - {id: operations_aux_01, topic: system_operations, text: "行政岗位，使用内部系统提交采购申请", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: test_core_01, topic: digital_testing, text: "设计嵌入式软件测试用例并分析日志定位缺陷", technology_role: core, strict_ai: false, score: 2}
+  - {id: test_core_02, topic: digital_testing, text: "搭建芯片自动化测试平台，采集并分析测试数据", technology_role: core, strict_ai: false, score: 2}
+  - {id: test_core_03, topic: digital_testing, text: "负责网络设备协议测试和故障诊断", technology_role: core, strict_ai: false, score: 2}
+  - {id: test_none_01, topic: digital_testing, text: "检查包装外观与尺寸，记录不合格品", technology_role: none, strict_ai: false, score: 0}
+  - {id: data_aux_01, topic: data_work, text: "汇总销售数据并制作每周 Excel 报表", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: data_aux_02, topic: data_work, text: "在业务系统录入客户资料并核对字段", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: data_core_01, topic: data_work, text: "建立经营分析指标体系，使用 SQL 完成专题分析", technology_role: core, strict_ai: false, score: 2}
+  - {id: data_core_02, topic: data_work, text: "建设数据仓库、开发 ETL 任务并维护数据质量", technology_role: core, strict_ai: false, score: 2}
+  - {id: data_core_03, topic: data_work, text: "构建信用风险统计模型并完成回测", technology_role: core, strict_ai: false, score: 2}
+  - {id: algo_core_01, topic: traditional_algorithms, text: "开发电机控制算法并在实时控制器上调试", technology_role: core, strict_ai: false, score: 2}
+  - {id: algo_core_02, topic: traditional_algorithms, text: "负责通信信号同步与信道估计算法开发", technology_role: core, strict_ai: false, score: 2}
+  - {id: algo_core_03, topic: traditional_algorithms, text: "优化相机 ISP 去噪、白平衡和色彩校正算法", technology_role: core, strict_ai: false, score: 2}
+  - {id: algo_core_04, topic: traditional_algorithms, text: "建立结构有限元仿真模型并开展参数优化", technology_role: core, strict_ai: false, score: 2}
+  - {id: strict_ai_01, topic: strict_ai, text: "训练深度学习模型完成图像目标检测", technology_role: core, strict_ai: true, score: 3}
+  - {id: strict_ai_02, topic: strict_ai, text: "负责大语言模型微调、推理优化和部署评估", technology_role: core, strict_ai: true, score: 3}
+  - {id: strict_ai_03, topic: strict_ai, text: "构建推荐系统特征工程和机器学习排序模型", technology_role: core, strict_ai: true, score: 3}
+  - {id: strict_ai_false_01, topic: strict_ai, text: "销售人工智能摄像头并维护渠道客户", technology_role: auxiliary, strict_ai: false, score: 1}
+  - {id: strict_ai_false_02, topic: strict_ai, text: "公司主营 AI 产品，本岗位负责发票审核和报销", technology_role: none, strict_ai: false, score: 0}
+  - {id: none_01, topic: no_technology, text: "负责门店客户接待、合同归档和日常沟通", technology_role: none, strict_ai: false, score: 0}
+  - {id: none_02, topic: no_technology, text: "制定生产计划并协调物料和人员排班", technology_role: none, strict_ai: false, score: 0}

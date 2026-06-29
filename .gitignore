@@ -9,3 +9,4 @@ htmlcov/
 .quarto/
 .cache/
 artifacts/llm/private/
+artifacts/evals/llm_v2_1/private/

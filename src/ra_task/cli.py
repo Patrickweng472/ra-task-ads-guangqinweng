@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from .human_evaluation import DEFAULT_REVIEW_SEED, prepare_human_evaluation
 from .pipeline import run_pipeline, verify_outputs
 
 
@@ -17,6 +18,9 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--seed", type=int, default=20260627)
     verify = sub.add_parser("verify", help="验证已生成的交付物")
     verify.add_argument("--output-dir", type=Path, default=Path("outputs"))
+    review = sub.add_parser("prepare-human-eval", help="生成 v2.1 人工盲审开发集与锁定留出集")
+    review.add_argument("--output-dir", type=Path, default=Path("artifacts/evals/llm_v2_1"))
+    review.add_argument("--seed", type=int, default=DEFAULT_REVIEW_SEED)
     return parser
 
 
@@ -24,8 +28,10 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "run":
         run_pipeline(args.ads, args.firms, args.output_dir, offline=args.offline, seed=args.seed)
-    else:
+    elif args.command == "verify":
         verify_outputs(args.output_dir, require_archive=True)
+    else:
+        prepare_human_evaluation(output_dir=args.output_dir, seed=args.seed)
     return 0
 
 

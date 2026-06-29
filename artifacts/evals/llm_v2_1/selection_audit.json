@@ -1,0 +1,50 @@
+{
+  "rubric_version": "2.1.0",
+  "seed": 20260629,
+  "created_from": {
+    "ads": "data/processed/cleaned_ads.csv",
+    "labels": "outputs/ai_scores.csv (v2.0.0)",
+    "version_comparison": "artifacts/review/v1_v2_label_comparison.csv",
+    "same_model_retest": "artifacts/review/reliability_sample.csv"
+  },
+  "development_count": 60,
+  "holdout_count": 60,
+  "canonical_id_overlap": 0,
+  "blind_columns": [
+    "review_id",
+    "岗位",
+    "岗位描述",
+    "岗位标签",
+    "human_score",
+    "technology_role",
+    "strict_ai",
+    "human_confidence",
+    "human_evidence",
+    "human_note"
+  ],
+  "private_mapping_committed": false,
+  "score_distribution_by_split": {
+    "development": {
+      "0": 15,
+      "1": 20,
+      "2": 24,
+      "3": 1
+    },
+    "holdout": {
+      "0": 18,
+      "1": 20,
+      "2": 21,
+      "3": 1
+    }
+  },
+  "files": {
+    "development": {
+      "csv": "artifacts/evals/llm_v2_1/blind_development.csv",
+      "xlsx": "artifacts/evals/llm_v2_1/blind_development.xlsx"
+    },
+    "holdout": {
+      "csv": "artifacts/evals/llm_v2_1/blind_holdout.csv",
+      "xlsx": "artifacts/evals/llm_v2_1/blind_holdout.xlsx"
+    }
+  }
+}
