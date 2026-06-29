@@ -63,7 +63,7 @@ def test_evaluate_predictions_records_threshold_error_direction_and_metrics() ->
             "canonical_id": ["10", "20", "30"],
             "human_score": [1, 2, 3],
             "technology_role": ["auxiliary", "core", "core"],
-            "strict_ai": [False, False, True],
+            "strict_ai": ["False", "false", "True"],
         }
     )
     predictions = pd.DataFrame(
@@ -72,7 +72,7 @@ def test_evaluate_predictions_records_threshold_error_direction_and_metrics() ->
             "score": [2, 1, 3],
             "model_score": [2, 1, 3],
             "technology_role": ["core", "auxiliary", "core"],
-            "strict_ai": [False, False, True],
+            "strict_ai": ["False", "false", "True"],
             "evidence": ["AI项目", "数据平台", "机器学习"],
             "reason": ["误判核心", "误判辅助", "正确"],
             "confidence": ["medium", "medium", "high"],
