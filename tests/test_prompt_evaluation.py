@@ -70,6 +70,7 @@ def test_evaluate_predictions_records_threshold_error_direction_and_metrics() ->
         {
             "canonical_id": ["10", "20", "30"],
             "score": [2, 1, 3],
+            "model_score": [2, 1, 3],
             "technology_role": ["core", "auxiliary", "core"],
             "strict_ai": [False, False, True],
             "evidence": ["AI项目", "数据平台", "机器学习"],
