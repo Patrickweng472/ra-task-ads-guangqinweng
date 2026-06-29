@@ -74,18 +74,62 @@ def test_output_transaction_restores_previous_artifact_after_failure(tmp_path: P
     assert artifact.read_text(encoding="utf-8") == "stable"
 
 
+def test_snapshot_preserves_formal_v2_before_v2_1_rerun(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    Path("outputs").mkdir()
+    Path("outputs/ai_scores.csv").write_text("canonical_id,prompt_version,score\n1,2.0.0,1\n", encoding="utf-8")
+    Path("outputs/annual_ai_share.csv").write_text(
+        "year,share_score_ge_2,share_score_ge_1,share_score_eq_3\n2025,0,1,0\n", encoding="utf-8"
+    )
+
+    pipeline._snapshot_previous_version()
+
+    assert Path("artifacts/baselines/v2/ai_scores.csv").exists()
+    assert Path("artifacts/baselines/v2/annual_ai_share.csv").exists()
+
+
+def test_version_comparison_uses_v2_baseline_for_v2_1_outputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    baseline = Path("artifacts/baselines/v2")
+    baseline.mkdir(parents=True)
+    pd.DataFrame(
+        [{"canonical_id": "1", "score": 1, "evidence": "Excel", "reason": "辅助"}]
+    ).to_csv(baseline / "ai_scores.csv", index=False)
+    pd.DataFrame(
+        [{"year": 2025, "share_score_ge_2": 0.0, "share_score_ge_1": 1.0, "share_score_eq_3": 0.0}]
+    ).to_csv(baseline / "annual_ai_share.csv", index=False)
+    labels = pd.DataFrame(
+        [{"canonical_id": "1", "score": 2, "evidence": "数据平台", "reason": "核心"}]
+    )
+    annual = pd.DataFrame(
+        [{"year": 2025, "share_score_ge_2": 1.0, "share_score_ge_1": 1.0, "share_score_eq_3": 0.0}]
+    )
+
+    summary = pipeline._write_version_comparison(labels, annual)
+
+    assert summary["from_version"] == "v2"
+    assert summary["to_version"] == "v2.1"
+    assert summary["main_threshold_changes"] == 1
+    assert Path("artifacts/review/v2_v2_1_label_comparison.csv").exists()
+
+
 def test_offline_mode_fails_before_outputs_when_formal_cache_is_absent(tmp_path: Path) -> None:
     assert hasattr(pipeline, "require_formal_cache")
     with pytest.raises(RuntimeError, match="formal v2 cache"):
         pipeline.require_formal_cache(tmp_path / "missing.jsonl", offline=True)
 
 
-@pytest.mark.skipif(shutil.which("quarto") is None, reason="Quarto is required for the full delivery pipeline")
+@pytest.mark.skipif(
+    shutil.which("quarto") is None or not Path("artifacts/llm/v2_1/labels_cache.jsonl").exists(),
+    reason="Quarto and formal v2.1 caches are required for the full delivery pipeline",
+)
 def test_full_offline_pipeline_rebuilds_delivery_from_formal_caches(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     project_root = Path(__file__).resolve().parents[1]
-    for relative in ["config", "data/raw", "artifacts/llm/v2", "artifacts/baselines/v1"]:
+    for relative in ["config", "data/raw", "artifacts/llm/v2_1", "artifacts/baselines/v1"]:
         shutil.copytree(project_root / relative, tmp_path / relative)
     shutil.copy2(project_root / "README.md", tmp_path / "README.md")
     monkeypatch.chdir(tmp_path)
@@ -138,7 +182,8 @@ def test_report_names_strict_ai_and_same_model_retest_honestly() -> None:
     }
     sensitivity = {
         "available": True, "score_changes": 1, "main_threshold_changes": 1,
-        "v1_score_distribution": {0: 1, 2: 1}, "v2_score_distribution": {0: 1, 3: 1},
+        "from_version": "v2", "to_version": "v2.1",
+        "from_score_distribution": {0: 1, 2: 1}, "to_score_distribution": {0: 1, 3: 1},
         "max_abs_annual_main_share_change": 0.1,
     }
 
