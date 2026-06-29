@@ -74,6 +74,22 @@ def test_output_transaction_restores_previous_artifact_after_failure(tmp_path: P
     assert artifact.read_text(encoding="utf-8") == "stable"
 
 
+def test_submission_archive_excludes_nested_candidate_snapshots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    Path("README.md").write_text("submission", encoding="utf-8")
+    candidate = Path("artifacts/candidates/v2_1")
+    candidate.mkdir(parents=True)
+    (candidate / "nested.zip").write_bytes(b"not a real zip")
+
+    pipeline.build_archive()
+
+    with pipeline.zipfile.ZipFile("dist/ra_task_submission.zip") as archive:
+        assert "README.md" in archive.namelist()
+        assert not any(name.startswith("artifacts/candidates/") for name in archive.namelist())
+
+
 def test_snapshot_preserves_formal_v2_before_v2_1_rerun(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     Path("outputs").mkdir()
@@ -129,7 +145,7 @@ def test_full_offline_pipeline_rebuilds_delivery_from_formal_caches(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     project_root = Path(__file__).resolve().parents[1]
-    for relative in ["config", "data/raw", "artifacts/llm/v2_1", "artifacts/baselines/v1"]:
+    for relative in ["config", "data/raw", "artifacts/llm/v2_1", "artifacts/baselines/v1", "artifacts/baselines/v2"]:
         shutil.copytree(project_root / relative, tmp_path / relative)
     shutil.copy2(project_root / "README.md", tmp_path / "README.md")
     monkeypatch.chdir(tmp_path)
