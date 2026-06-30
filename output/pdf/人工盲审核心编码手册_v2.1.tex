@@ -1,0 +1,950 @@
+\documentclass[11pt,a4paper,fontset=none]{ctexart}
+
+\setCJKmainfont{Songti SC}[AutoFakeBold=2.5,AutoFakeSlant=0.18]
+\setCJKsansfont{Heiti SC}[AutoFakeBold=2.5]
+\setCJKmonofont{Songti SC}[AutoFakeBold=2.5]
+
+\usepackage[a4paper,margin=2.15cm,headheight=15pt]{geometry}
+\usepackage{booktabs,longtable,tabularx,array,multirow}
+\usepackage{enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage[table]{xcolor}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{lastpage}
+\usepackage{microtype}
+\usepackage{pifont}
+\usepackage{amssymb}
+
+\definecolor{navy}{HTML}{17365D}
+\definecolor{blue}{HTML}{2F75B5}
+\definecolor{lightblue}{HTML}{D9EAF7}
+\definecolor{paleblue}{HTML}{EEF5FB}
+\definecolor{yellow}{HTML}{FFF2CC}
+\definecolor{palered}{HTML}{FCE4D6}
+\definecolor{green}{HTML}{548235}
+\definecolor{graytext}{HTML}{555555}
+\definecolor{lightgray}{HTML}{F4F6F8}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=navy,
+  urlcolor=blue,
+  pdftitle={LLM 文本编码 v2.1 人工盲审操作手册},
+  pdfauthor={翁广秦},
+  pdfsubject={招聘广告 AI／数字技术含量人工盲审规则}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{人工盲审核心编码手册 v2.1}
+\rhead{开发集 60 条}
+\cfoot{第 \thepage\ 页，共 \pageref{LastPage} 页}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0.25em}
+\setlist[itemize]{leftmargin=2em,itemsep=0.25em,topsep=0.35em}
+\setlist[enumerate]{leftmargin=2.4em,itemsep=0.35em,topsep=0.35em}
+\renewcommand{\arraystretch}{1.28}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+\newtcolorbox{keybox}[1][]{
+  enhanced,breakable,colback=paleblue,colframe=navy,boxrule=0.8pt,
+  arc=1.5mm,left=2mm,right=2mm,top=1.5mm,bottom=1.5mm,
+  fonttitle=\bfseries,title=#1
+}
+\newtcolorbox{warningbox}[1][]{
+  enhanced,breakable,colback=palered,colframe=red!65!black,boxrule=0.8pt,
+  arc=1.5mm,left=2mm,right=2mm,top=1.5mm,bottom=1.5mm,
+  fonttitle=\bfseries,title=#1
+}
+\newtcolorbox{examplebox}[1][]{
+  enhanced,breakable,colback=lightgray,colframe=blue,boxrule=0.6pt,
+  arc=1.5mm,left=2mm,right=2mm,top=1.5mm,bottom=1.5mm,
+  fonttitle=\bfseries,title=#1
+}
+\newcommand{\yes}{\textcolor{green}{\ding{51}}}
+\newcommand{\no}{\textcolor{red!70!black}{\ding{55}}}
+\newcommand{\field}[1]{\nolinkurl{#1}}
+
+\begin{document}
+\pagenumbering{roman}
+\hypersetup{pageanchor=false}
+
+\begin{titlepage}
+  \centering
+  \vspace*{2.0cm}
+  {\color{navy}\rule{\textwidth}{1.4pt}}\\[1.3cm]
+  {\Huge\bfseries AI／数字技术含量\\[0.25cm]人工盲审操作手册}\par
+  \vspace{0.6cm}
+  {\LARGE LLM 文本编码 v2.1}\par
+  \vspace{1.1cm}
+  {\large 面向 \texttt{blind\_development.xlsx} 的逐行填写指南}\par
+  \vspace{1.5cm}
+  \begin{tcolorbox}[width=0.84\textwidth,colback=yellow,colframe=navy,boxrule=0.9pt,arc=2mm]
+    \centering\large
+    \textbf{最重要的一句话：}不要先猜分数。\\[0.25cm]
+    先判断技术角色是 \texttt{none／auxiliary／core}，\\
+    再判断是否属于严格 AI，最后按固定映射填写分数。
+  \end{tcolorbox}
+  \vfill
+  {\large 作者：翁广秦}\par
+  \vspace{0.25cm}
+  {\large 规范版本：2.1.0}\par
+  \vspace{0.25cm}
+  {\large 日期：2026 年 6 月 29 日}\par
+  \vspace{1.0cm}
+  {\color{navy}\rule{\textwidth}{1.4pt}}
+\end{titlepage}
+\hypersetup{pageanchor=true}
+\setcounter{page}{1}
+
+\tableofcontents
+\clearpage
+\pagenumbering{arabic}
+
+\section{如果只看一页：最简操作流程}
+
+\begin{keybox}[每审核一行，都按下面 7 步走]
+\begin{enumerate}[label=\textbf{步骤 \arabic*.}]
+  \item \textbf{只读 B-D 列原文：}岗位、岗位描述、岗位标签。不要查公司、年份，不要查看模型结果。
+  \item \textbf{寻找明示的数字技术：}软件、系统、数据、数字硬件、自动化、编程、算法、AI 等。只相信原文，不依赖常识猜测。
+  \item \textbf{判断 \field{technology_role}：}
+  \begin{itemize}
+    \item 没有明示数字技术：填 \texttt{none}；
+    \item 数字工具只辅助非数字主业：填 \texttt{auxiliary}；
+    \item 数字技术能力本身就是岗位主要产出：填 \texttt{core}。
+  \end{itemize}
+  \item \textbf{判断 \field{strict_ai}：}只有岗位核心职责明确承担 AI／机器学习模型的研发、训练、推理、评估或部署，才填 \texttt{true}；其他一律填 \texttt{false}。
+  \item \textbf{按固定映射填写 \field{human_score}：}不能独立凭感觉打分。
+  \item \textbf{填写置信度：}\texttt{high／medium／low}。
+  \item \textbf{复制证据：}1-3 分必须从 B、C 或 D 列复制一段\textbf{连续原文}到 \field{human_evidence}；0 分证据留空。边界理由写入 \field{human_note}。
+\end{enumerate}
+\end{keybox}
+
+\begin{center}
+\rowcolors{2}{white}{paleblue}
+\noindent\begin{tabularx}{\textwidth}{C{1.1cm} C{2.4cm} C{1.8cm} Y Y}
+\toprule
+\rowcolor{navy}\color{white}\textbf{分数} & \color{white}\shortstack{\textbf{technology\_}\\\textbf{role}} & \color{white}\textbf{strict\_ai} & \color{white}\textbf{一句话含义} & \color{white}\textbf{human\_evidence}\\
+\midrule
+0 & \texttt{none} & \texttt{false} & 没有明示数字技术要求 & 留空\\
+1 & \texttt{auxiliary} & \texttt{false} & 数字工具辅助非数字主业 & 必须复制连续原文\\
+2 & \texttt{core} & \texttt{false} & 数字技术是主要产出，但不是严格 AI & 必须复制连续原文\\
+3 & \texttt{core} & \texttt{true} & 核心职责是严格 AI 技术工作 & 必须复制连续原文\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\begin{warningbox}[四种合法组合以外，全部都是错误]
+\texttt{none + true}、\texttt{auxiliary + true}、\texttt{core + false + score 3}、\texttt{core + true + score 2} 都会被程序拒绝。\field{human_score} 是前两个维度的结果，不是第三个独立判断。
+\end{warningbox}
+
+\section{这份表究竟是什么}
+
+\subsection{每一行代表什么}
+
+“待审核”工作表共有 60 条开发集广告。\textbf{每一行就是一条独立招聘广告}，包含岗位名称、岗位描述和岗位标签。你的任务不是评价公司是否先进，也不是判断岗位好不好，而是回答一个非常窄的问题：
+
+\begin{keybox}[本研究唯一构念]
+这条招聘广告的原文，\textbf{明示要求了多强的 AI／数字技术能力}？
+\end{keybox}
+
+必须把“公司很数字化”“岗位所在行业很高科技”“这种岗位通常会用电脑”与“广告原文明确要求数字技术”严格分开。只有最后一种情况可以加分。
+
+\subsection{为什么叫“盲审”}
+
+盲审表故意隐藏了公司名称、年份、原始广告 ID、模型分数、模型理由和抽样原因。这么做是为了防止你被先前结果暗示。审核时：
+
+\begin{itemize}
+  \item 不搜索公司，不根据知名企业或行业印象判断；
+  \item 不查看仓库里的 \texttt{outputs/ai\_scores.csv}；
+  \item 不尝试把 \field{review_id} 反查成原始广告；
+  \item 不在开发集和留出集之间互相复制判断；
+  \item 每一行独立判断，不为了让总分分布“好看”而调整。
+\end{itemize}
+
+\subsection{现在只做开发集}
+
+当前只填写 \texttt{blind\_development.xlsx}。\textbf{暂时不要填写或返回 \texttt{blind\_holdout.xlsx}}。开发集用于改进提示词；留出集必须等提示词冻结后才评测，否则会失去检验价值。
+
+\section{逐列解释：A-J 列分别在说什么}
+
+\begin{longtable}{C{0.8cm} L{3.0cm} L{4.0cm} L{6.2cm}}
+\toprule
+\rowcolor{navy}\color{white}\textbf{列} & \color{white}\textbf{字段} & \color{white}\textbf{它表示什么} & \color{white}\textbf{你要做什么}\\
+\midrule
+\endfirsthead
+\toprule
+\rowcolor{navy}\color{white}\textbf{列} & \color{white}\textbf{字段} & \color{white}\textbf{它表示什么} & \color{white}\textbf{你要做什么}\\
+\midrule
+\endhead
+A & \field{review_id} & 随机生成的盲审编号，例如 \texttt{DEV-ABC123}。编号本身没有业务含义。 & \textbf{不要修改。}它用于之后把人工结果与原广告安全合并。\\
+B & 岗位 & 招聘岗位名称。 & 阅读。标题可提供线索，但“技术员”“工程师”等泛化标题不能单独证明数字技术。\\
+C & 岗位描述 & 职责、任职要求、技能、工具、工作内容等，是最主要证据来源。 & 仔细阅读；优先寻找“负责什么”而不是只看专业背景或公司介绍。\\
+D & 岗位标签 & 招聘网站提取或广告附带的标签，可能为空，也可能有噪声。 & 作为辅助证据；与正文冲突时优先相信更具体的职责描述。\\
+E & \field{human_score} & 最终 0-3 分。 & \textbf{必须填写整数}，但只能在 F、G 两列确定后按映射填写。\\
+F & \field{technology_role} & 数字技术在岗位中是无、辅助还是核心。 & 从下拉框选 \texttt{none／auxiliary／core}。这是最重要的一列。\\
+G & \field{strict_ai} & 是否属于严格 AI 技术工作。 & 从下拉框选 \texttt{false／true}。只有 \texttt{core} 才可能为 \texttt{true}。\\
+H & \field{human_confidence} & 你对该判断的把握程度。 & 从下拉框选 \texttt{high／medium／low}；它表示证据清晰度，不表示岗位技术水平。\\
+I & \field{human_evidence} & 支持正分的原文证据。 & 1-3 分必填；从 B、C 或 D 列\textbf{原样复制一段连续文字}。0 分留空。\\
+J & \field{human_note} & 边界理由或疑难备注。 & 可留空；遇到 0/1、1/2、2/3 边界时强烈建议说明“为什么不是相邻等级”。\\
+\bottomrule
+\end{longtable}
+
+\begin{keybox}[哪些列必填]
+每一行的 E、F、G、H 列必填。I 列在 1-3 分时必填，0 分时留空。J 列可选。A-D 列禁止修改。
+\end{keybox}
+
+\section{第一判断：什么算“数字技术”}
+
+本项目中的“数字技术”包括以下几类，只要原文明示才算：
+
+\begin{itemize}
+  \item \textbf{软件和编程：}软件开发、接口、程序、代码、Java、Python、C/C++ 等；
+  \item \textbf{信息系统：}数据库、服务器、操作系统、ERP、SAP、MES、CRM、信息化平台等；
+  \item \textbf{数据工作：}数据工程、数据平台、SQL、ETL、统计模型、核心数据分析等；
+  \item \textbf{网络与安全：}网络配置、路由交换、防火墙、漏洞诊断、网络安全、系统运维等；
+  \item \textbf{自动化和数字硬件：}嵌入式、FPGA、数字芯片、PCB、物联网、数字控制、电子系统开发和测试等；
+  \item \textbf{专业算法：}通信、控制、优化、ISP、金融定价、统计、仿真等非 AI 算法；
+  \item \textbf{严格 AI：}机器学习、深度学习、神经网络、计算机视觉、NLP、大模型、推荐系统及模型训练、推理、评估、部署。
+\end{itemize}
+
+下列内容\textbf{不能因为听起来“技术”就自动算数字技术}：
+
+\begin{itemize}
+  \item 材料研发、化工工艺、机械加工、生产工艺、建筑施工等一般专业技术；
+  \item “分析问题能力”“技术支持”“技术资料”等没有指出数字对象的泛化表述；
+  \item 仅要求计算机、统计、电子等专业背景，但没有明确数字职责或技能；
+  \item 公司主营 AI、智能产品、大数据，然而本岗位只做财务、销售、行政或客户关系；
+  \item 岗位通常可能使用电脑或软件，但广告没有写出来。
+\end{itemize}
+
+\begin{warningbox}[最常见误区：“工程师”不等于数字技术岗位]
+“研发工程师”“技术员”“质量工程师”可能研究材料、工艺或机械产品。除非原文明确出现数字工具、数字系统、软件、数据、数字硬件或算法，否则不能凭标题加分。
+\end{warningbox}
+
+\section{第二判断：technology\_role 怎么选}
+
+\subsection{核心职责反事实测试}
+
+阅读原文后，问自己：
+
+\begin{keybox}[核心职责反事实测试]
+如果把原文明示的数字技术能力从岗位中拿掉，这个岗位的\textbf{主要产出是否仍然成立}？
+\begin{itemize}
+  \item 仍然成立：技术只是辅助，选 \texttt{auxiliary}；
+  \item 无法成立：技术本身就是主要产出，选 \texttt{core}；
+  \item 原文根本没明示数字技术：选 \texttt{none}。
+\end{itemize}
+\end{keybox}
+
+“主要产出”是岗位最终被雇来交付的东西，而不是任意一项技能。例如：
+
+\begin{itemize}
+  \item 会计使用 ERP 的主要产出仍是记账和结算，所以是 \texttt{auxiliary}；
+  \item ERP 开发工程师的主要产出就是系统开发，拿掉 ERP 技术岗位便不存在，所以是 \texttt{core}；
+  \item 销售人员了解网络安全产品，主要产出仍是销售，所以通常是 \texttt{auxiliary}；
+  \item 售前工程师为客户设计安全方案、诊断漏洞和配置防火墙，主要产出是数字技术方案，所以是 \texttt{core}。
+\end{itemize}
+
+\subsection{none：没有明示数字技术}
+
+选择 \texttt{none} 的条件是：广告没有明确要求使用数字工具、系统、软件、数据、数字硬件、编程、自动化、算法或 AI。
+
+\textbf{典型情形：}
+\begin{itemize}
+  \item 一般销售、行政、人事、客服、生产、采购、渠道维护；
+  \item 材料、化学、机械或工艺研发，但没有数字工具／数字职责；
+  \item “AI”“智能”“数据”等只在公司、品牌、产品或客户背景中出现；
+  \item 只要求相关专业或一般分析能力，没有明确技术任务；
+  \item 信息不足，无法确认数字要求。此时通常填 0，并将置信度设为 \texttt{low} 或 \texttt{medium}。
+\end{itemize}
+
+\textbf{与 1 分的分界：}只要原文明确要求使用 Office、Excel、ERP、CAD、业务系统、数据报表等数字工具，即不再是 \texttt{none}，应考虑 \texttt{auxiliary}。
+
+\subsection{auxiliary：数字工具辅助非数字主业}
+
+选择 \texttt{auxiliary} 的条件是：广告明确提到数字工具或普通数据处理，但岗位主要产出仍是销售、行政、财务、机械设计、内容制作、普通运营等非数字主业。
+
+\textbf{典型情形：}
+\begin{itemize}
+  \item 会计使用 ERP、财务软件或 Excel；
+  \item 机械／建筑设计师使用 CAD、CAE、BIM、PDMS；
+  \item 运营人员使用投放平台、剪辑工具、CRM 或制作普通报表；
+  \item 行政人员在系统中录入资料；
+  \item 销售人员了解软件或 AI 产品、做 PPT 演示，但不承担技术方案或系统工作；
+  \item 只协助 AI 项目的排期、会议、合同、预算或验收，不承担模型、数据或系统技术工作；
+  \item 使用 ChatGPT 等现成 AI 工具写文案，但不是开发、训练或部署 AI。
+\end{itemize}
+
+\textbf{与 2 分的分界：}若岗位被雇来开发、建设、配置、测试、诊断、运维、保护或技术支持数字系统，或者数据分析本身就是主要产出，则应为 \texttt{core}。
+
+\subsection{core：数字技术本身是主要产出}
+
+选择 \texttt{core} 的条件是：软件、数据、系统、数字硬件、自动化或专业算法能力本身构成岗位交付，拿掉这些能力后岗位无法成立。
+
+\textbf{典型情形：}
+\begin{itemize}
+  \item 软件开发、系统架构、接口开发、数据库、数据工程、数据平台；
+  \item 服务器、操作系统、网络、数据库的配置、运维、故障处理；
+  \item 网络安全方案、漏洞诊断、防火墙配置、安全咨询；
+  \item 软件／数字系统的测试设计、自动化测试、日志分析、缺陷定位；
+  \item 嵌入式、FPGA、数字芯片、PCB、物联网、电子系统开发与数字硬件测试；
+  \item 数据分析、统计模型、数据产品、数据平台本身是岗位主要产出；
+  \item 金融定价、传统统计、控制、通信、优化、ISP、物理仿真等非 AI 算法；
+  \item AI／机器学习模型研发、训练、推理、评估或部署。
+\end{itemize}
+
+\section{第三判断：strict\_ai 什么时候才为 true}
+
+\subsection{必要条件}
+
+\field{strict_ai} 只有在下列两个条件\textbf{同时满足}时才填 \texttt{true}：
+
+\begin{enumerate}
+  \item \field{technology_role} 已经是 \texttt{core}；
+  \item 岗位核心职责明确承担 AI／机器学习模型的研发、训练、推理、评估或部署。
+\end{enumerate}
+
+常见强证据包括：人工智能、机器学习、深度学习、神经网络、计算机视觉、机器视觉、模式识别、自然语言处理、NLP、大语言模型、LLM、生成式 AI、推荐系统、特征工程、模型训练、模型推理、模型评估、模型部署。
+
+\subsection{出现“AI”一词也不能自动为 true}
+
+以下情况 \field{strict_ai} 必须为 \texttt{false}：
+
+\begin{itemize}
+  \item 公司或产品属于 AI，但岗位只负责销售、财务、行政、质量或客户关系；
+  \item 只“协助 AI 项目推进”、跟进排期、合同、预算或验收；
+  \item 使用现成 AI 工具完成写作、运营或设计；
+  \item 为 AI 项目做数据录入、数据标注或普通数据平台工作，但没有模型训练／推理／评估／部署职责；
+  \item 负责一般云平台、服务器或网络运维，而服务对象恰好是 AI 产品；
+  \item “深度学习能力”只是自然语言中的“深入学习能力”，不是机器学习术语。
+\end{itemize}
+
+\subsection{传统算法不是严格 AI}
+
+下列任务若是岗位核心，通常为 2 分，而不是 3 分：
+
+\begin{itemize}
+  \item 金融定价、风险计量、量化估值；
+  \item 传统统计建模、计量模型；
+  \item 控制算法、通信算法、信号处理；
+  \item 优化算法、运筹优化；
+  \item ISP 图像处理，如 3A、HDR、去噪、白平衡、色彩校正；
+  \item 物理仿真、有限元、器件物理模型；
+  \item ETL、数据仓库、大数据平台、数据库。
+\end{itemize}
+
+只有原文进一步明确机器学习、深度学习、神经网络、学习型模型或数据驱动训练，才能升级为 3 分。
+
+\section{四个分数的完整判分规则}
+
+\subsection{0 分：无明示数字技术}
+
+\noindent\begin{tabularx}{\textwidth}{L{3.1cm}Y}
+\toprule
+字段 & 应填写内容\\
+\midrule
+\field{technology_role} & \texttt{none}\\
+\field{strict_ai} & \texttt{false}\\
+\field{human_score} & \texttt{0}\\
+\field{human_evidence} & 留空\\
+\field{human_confidence} & 证据清晰则 high；文本少或存在隐约线索则 medium／low\\
+\field{human_note} & 可写“未明示数字工具或数字职责”\\
+\bottomrule
+\end{tabularx}
+
+\textbf{判 0 的关键不是“这个岗位现实中不用电脑”，而是“广告没有明示数字技术要求”。}
+
+\begin{examplebox}[0 分例 1：普通渠道销售]
+原文：“维护银行网点，组织市场活动，达成销售指标。”
+
+判断：销售是主要产出，原文没有数字工具或系统要求。填 \texttt{none／false／0}，证据留空。
+\end{examplebox}
+
+\begin{examplebox}[0 分例 2：材料研发]
+原文：“负责复合材料配方开发、表面处理和项目报告编写。”
+
+判断：这是专业研发，但没有明示数字工具、软件、数据或算法。不能因为“研发”“技术开发”而加分。
+\end{examplebox}
+
+\subsection{1 分：辅助数字技术}
+
+\noindent\begin{tabularx}{\textwidth}{L{3.1cm}Y}
+\toprule
+字段 & 应填写内容\\
+\midrule
+\field{technology_role} & \texttt{auxiliary}\\
+\field{strict_ai} & \texttt{false}\\
+\field{human_score} & \texttt{1}\\
+\field{human_evidence} & 复制支持“使用数字工具”的连续原文\\
+\field{human_confidence} & 工具与非数字主业边界清楚可 high；只有一处证据常为 medium\\
+\field{human_note} & 建议说明“工具辅助 X 主业，不是数字技术产出”\\
+\bottomrule
+\end{tabularx}
+
+\begin{examplebox}[1 分例 1：会计使用 ERP]
+原文：“使用 ERP 完成凭证录入和月末结账。”
+
+填写：\texttt{auxiliary／false／1}；证据复制“使用 ERP 完成凭证录入和月末结账”；备注“ERP 辅助会计主业，不负责系统开发”。
+\end{examplebox}
+
+\begin{examplebox}[1 分例 2：机械设计使用 CAD]
+原文：“负责机械结构设计，熟练使用 CAD 绘制零件图。”
+
+判断：主要产出是机械结构设计，CAD 是工具。不是 2 分，因为岗位不开发或运维 CAD 系统。
+\end{examplebox}
+
+\begin{examplebox}[1 分例 3：只协调 AI 项目]
+原文：“协助人工智能项目排期、会议组织和跨部门沟通。”
+
+判断：AI 只是项目背景，岗位不做模型、数据或系统技术工作。填 \texttt{auxiliary／false／1}，绝不能填 3。
+\end{examplebox}
+
+\subsection{2 分：核心数字技术，但不是严格 AI}
+
+\noindent\begin{tabularx}{\textwidth}{L{3.1cm}Y}
+\toprule
+字段 & 应填写内容\\
+\midrule
+\field{technology_role} & \texttt{core}\\
+\field{strict_ai} & \texttt{false}\\
+\field{human_score} & \texttt{2}\\
+\field{human_evidence} & 复制支持核心技术职责的连续原文\\
+\field{human_confidence} & 核心职责与非 AI 边界都清楚可 high；边界有歧义则 medium／low\\
+\field{human_note} & 说明“为何是核心”和“为何不是严格 AI”\\
+\bottomrule
+\end{tabularx}
+
+\begin{examplebox}[2 分例 1：网络安全技术售前]
+原文：“为客户设计网络安全方案，完成漏洞诊断、防火墙配置和现场技术咨询。”
+
+判断：技术方案、诊断和配置就是主要交付，拿掉网络安全能力岗位无法成立。无 AI 模型职责，因此 \texttt{core／false／2}。
+\end{examplebox}
+
+\begin{examplebox}[2 分例 2：硬件测试]
+原文：“设计嵌入式软件测试用例，采集测试日志并定位系统缺陷。”
+
+判断：数字系统测试和缺陷定位是岗位产出，不是简单使用测试工具。无 AI，因此 2 分。
+\end{examplebox}
+
+\begin{examplebox}[2 分例 3：核心数据分析]
+原文：“建立经营分析指标体系，使用 SQL 完成专题分析并形成决策建议。”
+
+判断：数据分析本身是主要产出，属于核心数字技术。没有机器学习训练等要求，因此 2 分。
+\end{examplebox}
+
+\begin{examplebox}[2 分例 4：传统 ISP 算法]
+原文：“优化相机 ISP 去噪、白平衡、HDR 和色彩校正算法。”
+
+判断：算法是核心，但这是传统图像信号处理。若没有机器学习、深度学习或学习型模型，填 \texttt{core／false／2}。
+\end{examplebox}
+
+\subsection{3 分：严格 AI 技术}
+
+\noindent\begin{tabularx}{\textwidth}{L{3.1cm}Y}
+\toprule
+字段 & 应填写内容\\
+\midrule
+\field{technology_role} & \texttt{core}\\
+\field{strict_ai} & \texttt{true}\\
+\field{human_score} & \texttt{3}\\
+\field{human_evidence} & 复制明确的 AI／ML 核心职责连续原文\\
+\field{human_confidence} & 模型对象和技术动作都清楚可 high；只出现孤立 AI 词时不能 high\\
+\field{human_note} & 说明具体承担训练、推理、评估、部署中的哪一项\\
+\bottomrule
+\end{tabularx}
+
+\begin{examplebox}[3 分例 1：计算机视觉]
+原文：“训练深度学习模型完成目标检测，负责模型评估和部署优化。”
+
+判断：明确出现深度学习模型训练、评估和部署，属于严格 AI。填 \texttt{core／true／3}。
+\end{examplebox}
+
+\begin{examplebox}[3 分例 2：大语言模型]
+原文：“负责大语言模型微调、推理性能优化和线上部署评估。”
+
+判断：大模型的微调、推理和部署均为核心职责，3 分。
+\end{examplebox}
+
+\section{三个最关键的相邻等级边界}
+
+\subsection{0 分还是 1 分：有没有明示数字工具}
+
+\noindent\begin{tabularx}{\textwidth}{Y C{1.4cm} Y}
+\toprule
+\textbf{原文} & \textbf{分数} & \textbf{理由}\\
+\midrule
+“负责客户接待、合同归档和日常沟通” & 0 & 没有明示数字工具。\\
+“使用办公系统完成合同归档” & 1 & 系统辅助行政主业。\\
+“具备分析问题和解决问题的能力” & 0 & “分析”是一般能力，不是数据分析。\\
+“汇总销售数据并制作 Excel 周报” & 1 & 明示 Excel 和报表，但仍是普通业务辅助。\\
+“计算机相关专业优先” & 0 & 只有专业背景，没有明确数字职责。\\
+“熟练使用 Python”但没有说明任务 & 1 或 low & 明示数字工具但职责不清；保守判辅助，并降低置信度。\\
+\bottomrule
+\end{tabularx}
+
+\subsection{1 分还是 2 分：技术是工具还是产出}
+
+反复使用核心职责反事实测试：
+
+\noindent\begin{tabularx}{\textwidth}{L{3.0cm}Y Y}
+\toprule
+场景 & 1 分：辅助 & 2 分：核心\\
+\midrule
+ERP & 会计使用 ERP 记账 & 开发、实施、集成或运维 ERP\\
+CAD／BIM & 用 CAD 完成机械／建筑设计 & 开发 CAD 插件、几何计算模块或数字设计系统\\
+销售／售前 & 理解产品卖点、完成销售指标 & 交付技术方案、PoC、诊断、配置、安全咨询\\
+数据 & 录入、汇总、周报、普通统计 & 数据分析／模型／数据产品本身是主要产出\\
+测试 & 一般外观、尺寸、质量检查 & 软件、数字硬件、网络系统测试及缺陷定位\\
+系统 & 普通用户操作业务系统 & 建设、配置、部署、运维、保护或技术支持系统\\
+AI 项目 & 排期、沟通、合同、验收协调 & 数据平台／系统技术工作为 2；模型技术工作为 3\\
+\bottomrule
+\end{tabularx}
+
+\subsection{2 分还是 3 分：专业算法还是学习型 AI}
+
+\begin{keybox}[2/3 分判定口诀]
+“算法”“模型”“图像”三个词本身都不够。必须看到 AI／ML 类别，或者清晰的数据驱动学习过程，例如训练、特征工程、推理、模型评估、模型部署。
+\end{keybox}
+
+\noindent\begin{tabularx}{\textwidth}{Y C{1.4cm} Y}
+\toprule
+原文 & 分数 & 理由\\
+\midrule
+“开发电机控制算法” & 2 & 传统控制算法。\\
+“开发通信信道估计算法” & 2 & 通信／信号处理算法。\\
+“建立信用风险统计模型并回测” & 2 & 统计／金融模型，未明示 ML。\\
+“开发图像去噪和 HDR 算法” & 2 & 传统 ISP／图像处理。\\
+“训练卷积神经网络完成图像去噪” & 3 & 明确神经网络训练。\\
+“开展机器学习特征工程和模型评估” & 3 & 明确 ML 工作链条。\\
+\bottomrule
+\end{tabularx}
+
+\section{八类高风险场景的详细规则}
+
+\subsection{技术售前与技术支持}
+
+先判断主要交付是“销售结果”还是“数字技术方案”。
+
+\begin{itemize}
+  \item \textbf{1 分：}完成销售指标、介绍产品卖点、维护客户关系、了解技术产品但把技术问题转交他人。
+  \item \textbf{2 分：}独立设计技术方案、PoC、诊断故障、配置系统、进行网络／安全咨询、编写技术标书、对客户技术部门提供实质性技术支持。
+  \item \textbf{3 分：}售前岗位还明确承担 AI 模型微调、推理验证或模型部署等严格 AI 技术工作。
+\end{itemize}
+
+“技术支持”四个字本身不够。必须看支持对象是否明确为软件、系统、网络、安全、数字硬件等数字技术；如果只是材料产品或机械工艺支持，不能自动判 2。
+
+\subsection{测试、质量与工程岗位}
+
+\begin{itemize}
+  \item \textbf{0 分：}外观检查、尺寸检查、生产质量审核，且未明示数字工具；
+  \item \textbf{1 分：}使用现成测试仪器或 Excel 记录一般产品数据，技术只是质量工作的工具；
+  \item \textbf{2 分：}软件／数字硬件／网络系统的测试设计、自动化测试、日志分析、协议测试、缺陷定位，或测试平台建设是主要产出；
+  \item \textbf{3 分：}明确评估 AI 模型性能、鲁棒性或部署推理效果，并且模型评估是核心技术职责。
+\end{itemize}
+
+“质量数据分析”通常先考虑 1 分；只有分析体系、数据模型或数字测试本身构成岗位主要产出时，才判 2 分。“协助 AI 项目推进”不等于 AI 技术工作。
+
+\subsection{专业工程软件：CAD、CAE、BIM、PDMS 等}
+
+\begin{itemize}
+  \item 机械、建筑、配管等专业人员使用软件完成本专业设计：1 分；
+  \item 开发软件插件、计算模块、数字设计平台，或负责系统集成／运维：2 分；
+  \item 使用 AI 模型自动生成／识别设计并承担模型训练：3 分。
+\end{itemize}
+
+\subsection{数据报表与核心数据分析}
+
+按“数据是否是主要产出”判断：
+
+\begin{itemize}
+  \item 系统录入、Excel 汇总、日常周报、普通统计：1 分；
+  \item 独立建立指标体系、SQL 专题分析、统计建模、数据产品、数据仓库、ETL、数据平台：2 分；
+  \item 机器学习特征工程、训练、推理、评估：3 分。
+\end{itemize}
+
+岗位描述只写“数据相关经验优先”而没有任务与工具时，证据不足。可判 0 并设低置信度；不要根据“数据”两个字强行判 2。
+
+\subsection{AI 项目协调、管理和辅助}
+
+\begin{itemize}
+  \item 只推进项目、组织会议、管合同／预算／进度／验收：1 分，\field{strict_ai=false}；
+  \item 核心承担 AI 项目的数据平台、系统集成或基础设施，但不做模型：2 分；
+  \item 明确负责模型训练方案、推理、评估或模型部署：3 分。
+\end{itemize}
+
+项目名称里出现 AI 不代表岗位承担 AI 技术。必须看动作和责任对象。
+
+\subsection{数字硬件、电子与自动化}
+
+\begin{itemize}
+  \item 一般机械、电气、材料专业知识，未明示数字对象：0 分；
+  \item 仅使用 CAD、测试仪器或现成控制系统完成非数字工程主业：1 分；
+  \item 嵌入式、FPGA、数字芯片、PCB、固件、数字控制、网络设备、电子系统架构或数字硬件测试是主要产出：2 分；
+  \item 将机器学习模型部署到芯片／边缘设备或研发 AI 加速算法：3 分。
+\end{itemize}
+
+“电子工程师”标题可作为线索，但仍应查看描述是否明确电子／数字硬件开发、设计、调试或测试。泛称“技术员”不能单独加分。
+
+\subsection{传统算法、图像算法和 AI}
+
+传统控制、通信、优化、ISP、金融、统计、物理仿真算法均为 2 分上限，除非原文明确 AI／ML。尤其注意：
+
+\begin{itemize}
+  \item ISP 的 3A、HDR、白平衡、去噪、插帧、色彩校正通常属于传统图像信号处理，判 2；
+  \item “图像识别”“计算机视觉”“模式识别”若是岗位核心研发，按冻结规范属于严格 AI，判 3；
+  \item “图像产品销售”或公司产品具有图像识别能力，但岗位不做算法，不能判 3。
+\end{itemize}
+
+\subsection{岗位标题、标签和专业背景}
+
+证据优先级通常是：\textbf{明确职责动作 $>$ 具体技能要求 $>$ 岗位标签 $>$ 泛化标题／专业背景}。
+
+\begin{itemize}
+  \item “软件工程师”“算法工程师”“数据工程师”等标题本身具有明确数字语义，可作为证据，但仍应核对描述；
+  \item “工程师”“研发工程师”“技术员”“质量工程师”太泛，不能单独支持正分；
+  \item “计算机专业优先”只说明背景，不自动证明实际工作要求；
+  \item 标签与正文冲突时，优先依据更具体、可定位的正文职责；
+  \item 标题明确但描述极少时，可正分但降低置信度至 medium 或 low。
+\end{itemize}
+
+\section{human\_evidence：证据到底怎么填}
+
+\subsection{必须满足的五条规则}
+
+\begin{enumerate}
+  \item 1-3 分必须填写；0 分留空。
+  \item 必须从“岗位”“岗位描述”或“岗位标签”中\textbf{原样复制}。
+  \item 必须是一段\textbf{连续文字}，不能把两处不相邻文字拼起来。
+  \item 不要改写、总结、补充同义词或加入原文没有的标点。
+  \item 选择能支持\textbf{关键边界}的最强证据，而不是只复制“技术”“数据”“AI”等孤立词。
+\end{enumerate}
+
+\begin{center}
+\noindent\begin{tabularx}{\textwidth}{C{1.1cm}Y Y}
+\toprule
+ & 示例 & 说明\\
+\midrule
+\yes & “负责 CRM 系统开发、接口设计和部署” & 连续原文，直接支持技术是核心。\\
+\yes & “训练深度学习模型完成图像识别” & 连续原文，支持严格 AI。\\
+\no & “CRM 开发 + 系统部署” & 改写并拼接，不是原文连续片段。\\
+\no & “该岗位属于核心数字技术” & 这是审核者总结，不是原文。\\
+\no & “AI” & 过短，无法证明 AI 是岗位核心职责。\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{若有两处证据怎么办}
+
+I 列只填写\textbf{最强的一段连续证据}。若第二处证据与第一处不连续，不要用“／”“；”“+”拼接到 I 列；可在 J 列备注第二处证据或说明理由。
+
+\begin{warningbox}[复制时最容易犯的错误]
+不要为了让句子更漂亮而删字、换词或补标点。验证程序检查的是该字符串是否完整出现在原文某一列中。最稳妥的方法是从单元格直接复制原文，不手工重打。
+\end{warningbox}
+
+\section{human\_confidence：置信度怎么选}
+
+置信度衡量的是\textbf{原文对你这个编码的支持程度}，不是岗位的技术强度，也不是你个人是否熟悉这个行业。
+
+\begin{longtable}{L{2.2cm}L{5.3cm}L{6.6cm}}
+\toprule
+\rowcolor{navy}\color{white}\textbf{取值} & \color{white}\textbf{操作定义} & \color{white}\textbf{常见情形}\\
+\midrule
+\endfirsthead
+\toprule
+\rowcolor{navy}\color{white}\textbf{取值} & \color{white}\textbf{操作定义} & \color{white}\textbf{常见情形}\\
+\midrule
+\endhead
+\texttt{high} & 至少两处一致明确的职责／技能证据，且与相邻等级边界清楚。 & 同时写明“开发数据平台”和“编写 ETL”；同时写明“训练深度学习模型”和“部署推理服务”。\\
+\texttt{medium} & 只有一处明确证据，或需要轻微判断核心／辅助边界。 & 只写“熟练使用 ERP”；标题明确是“软件工程师”但描述很少；售前既有销售又有技术内容。\\
+\texttt{low} & 信息不足、相互矛盾，或两个相邻等级都有合理解释。 & 只写“数据经验优先”；标题像技术岗但描述完全非技术；硬件测试对象不清；AI 词出现但角色不明。\\
+\bottomrule
+\end{longtable}
+
+\textbf{重要：}正分只有一段明确证据时，即使你主观很确定，也通常选 \texttt{medium}，不要滥用 \texttt{high}。
+
+\section{human\_note：什么时候必须认真写备注}
+
+J 列程序上可空，但以下情况强烈建议写：
+
+\begin{itemize}
+  \item 0/1、1/2、2/3 边界；
+  \item 标题与描述不一致；
+  \item 出现 AI 词但最终不是 3 分；
+  \item 传统算法与 AI 的区分；
+  \item 技术售前、测试、质量、硬件、专业工程软件；
+  \item 信息不足导致低置信度；
+  \item 你认为后续需要复核的任何广告。
+\end{itemize}
+
+推荐使用固定句式：
+
+\begin{itemize}
+  \item “数字工具仅辅助【非数字主业】，不是岗位主要产出，因此为 1 而非 2。”
+  \item “【软件／数据／系统】是岗位主要产出；未明确 AI／ML，因此为 2 而非 1 或 3。”
+  \item “虽然出现【AI 词】，但只描述【公司／产品／项目协调】，岗位未承担模型技术工作，因此不是 3。”
+  \item “原文只提供【模糊线索】，0/1（或 1/2、2/3）均可解释，故低置信度。”
+\end{itemize}
+
+\section{四条完整填写示范}
+
+以下均为\textbf{合成示例}，不来自 60 条开发集，避免对真实待审项目泄漏答案。
+
+\subsection{完整示范 A：0 分}
+
+\noindent\begin{tabularx}{\textwidth}{L{3.2cm}Y}
+\toprule
+字段 & 填写内容\\
+\midrule
+岗位 & 客户关系专员\\
+岗位描述 & 维护客户关系，组织线下活动，完成续约指标\\
+\field{human_score} & 0\\
+\field{technology_role} & \texttt{none}\\
+\field{strict_ai} & \texttt{false}\\
+\field{human_confidence} & \texttt{high}\\
+\field{human_evidence} & 留空\\
+\field{human_note} & 未明示数字工具、系统、数据或算法要求。\\
+\bottomrule
+\end{tabularx}
+
+\subsection{完整示范 B：1 分}
+
+\noindent\begin{tabularx}{\textwidth}{L{3.2cm}Y}
+\toprule
+字段 & 填写内容\\
+\midrule
+岗位 & 财务会计\\
+岗位描述 & 使用 ERP 完成凭证录入与月末结账\\
+\field{human_score} & 1\\
+\field{technology_role} & \texttt{auxiliary}\\
+\field{strict_ai} & \texttt{false}\\
+\field{human_confidence} & \texttt{medium}\\
+\field{human_evidence} & 使用 ERP 完成凭证录入与月末结账\\
+\field{human_note} & ERP 辅助会计主业，不负责系统开发或运维，因此为 1 而非 2。\\
+\bottomrule
+\end{tabularx}
+
+\subsection{完整示范 C：2 分}
+
+\noindent\begin{tabularx}{\textwidth}{L{3.2cm}Y}
+\toprule
+字段 & 填写内容\\
+\midrule
+岗位 & 数据平台工程师\\
+岗位描述 & 负责数据仓库建设、ETL 任务开发和数据质量监控\\
+\field{human_score} & 2\\
+\field{technology_role} & \texttt{core}\\
+\field{strict_ai} & \texttt{false}\\
+\field{human_confidence} & \texttt{high}\\
+\field{human_evidence} & 负责数据仓库建设、ETL 任务开发和数据质量监控\\
+\field{human_note} & 数据平台是岗位主要产出；没有 AI／ML 模型职责，因此为 2 而非 3。\\
+\bottomrule
+\end{tabularx}
+
+\subsection{完整示范 D：3 分}
+
+\noindent\begin{tabularx}{\textwidth}{L{3.2cm}Y}
+\toprule
+字段 & 填写内容\\
+\midrule
+岗位 & 机器学习工程师\\
+岗位描述 & 训练推荐排序模型，负责特征工程、离线评估和线上推理部署\\
+\field{human_score} & 3\\
+\field{technology_role} & \texttt{core}\\
+\field{strict_ai} & \texttt{true}\\
+\field{human_confidence} & \texttt{high}\\
+\field{human_evidence} & 训练推荐排序模型，负责特征工程、离线评估和线上推理部署\\
+\field{human_note} & 明确承担机器学习模型训练、评估和推理部署，属于严格 AI。\\
+\bottomrule
+\end{tabularx}
+
+\section{35 个快速边界案例与标准答案}
+
+这些案例是独立编写的合成回归集，不复制开发集原文。建议先理解规则，再把本节当作疑难对照表，而不是机械关键词表。
+
+\small
+\begin{longtable}{C{0.7cm}L{7.3cm}C{1.1cm}L{5.2cm}}
+\toprule
+\rowcolor{navy}\color{white}\textbf{序} & \color{white}\textbf{合成岗位原文} & \color{white}\textbf{分数} & \color{white}\textbf{关键理由}\\
+\midrule
+\endfirsthead
+\toprule
+\rowcolor{navy}\color{white}\textbf{序} & \color{white}\textbf{合成岗位原文} & \color{white}\textbf{分数} & \color{white}\textbf{关键理由}\\
+\midrule
+\endhead
+1 & 为客户设计网络安全方案并完成漏洞诊断与设备配置 & 2 & 技术方案和配置是核心，无 AI。\\
+2 & 负责数据库产品 PoC、部署架构设计和现场技术答疑 & 2 & 数字技术售前是主要产出。\\
+3 & 销售云产品，了解产品功能并将技术问题转交顾问 & 1 & 销售是主业，技术仅辅助。\\
+4 & 完成销售指标，向客户介绍软件产品卖点 & 1 & 了解技术产品不等于技术交付。\\
+5 & 协助人工智能项目排期、会议组织和跨部门沟通 & 1 & AI 项目协调，不做模型技术。\\
+6 & 跟进大模型项目合同、预算和验收材料 & 1 & 大模型只是项目背景。\\
+7 & 管理机器学习团队并负责模型训练方案和上线评估 & 3 & 明确负责模型训练和评估。\\
+8 & 机械结构设计，熟练使用 CAD 绘制零件图 & 1 & CAD 辅助机械设计。\\
+9 & 财务会计岗位，使用 ERP 完成凭证录入和月结 & 1 & ERP 辅助会计。\\
+10 & 建筑设计师，使用 BIM 软件完成建筑方案表达 & 1 & BIM 是设计工具。\\
+11 & 负责 ERP 系统二次开发、接口集成和故障处理 & 2 & ERP 系统工作本身是产出。\\
+12 & 开发 CAD 插件并维护几何计算模块 & 2 & 软件开发是核心。\\
+13 & 维护 Linux 服务器、部署服务并处理线上故障 & 2 & 系统运维是核心。\\
+14 & 负责数据库备份、性能监控和容灾演练 & 2 & 数据库运维是核心。\\
+15 & 行政岗位，使用内部系统提交采购申请 & 1 & 系统仅辅助行政。\\
+16 & 设计嵌入式软件测试用例并分析日志定位缺陷 & 2 & 数字系统测试是核心。\\
+17 & 搭建芯片自动化测试平台，采集并分析测试数据 & 2 & 数字硬件测试平台是核心。\\
+18 & 负责网络设备协议测试和故障诊断 & 2 & 网络技术测试是核心。\\
+19 & 检查包装外观与尺寸，记录不合格品 & 0 & 未明示数字工具。\\
+20 & 汇总销售数据并制作每周 Excel 报表 & 1 & 普通报表辅助业务。\\
+21 & 在业务系统录入客户资料并核对字段 & 1 & 系统录入是辅助。\\
+22 & 建立经营分析指标体系，使用 SQL 完成专题分析 & 2 & 数据分析是主要产出。\\
+23 & 建设数据仓库、开发 ETL 任务并维护数据质量 & 2 & 数据工程是核心。\\
+24 & 构建信用风险统计模型并完成回测 & 2 & 统计／金融模型，不是严格 AI。\\
+25 & 开发电机控制算法并在实时控制器上调试 & 2 & 传统控制算法。\\
+26 & 负责通信信号同步与信道估计算法开发 & 2 & 通信算法，不是 AI。\\
+27 & 优化相机 ISP 去噪、白平衡和色彩校正算法 & 2 & 传统图像信号处理。\\
+28 & 建立结构有限元仿真模型并开展参数优化 & 2 & 物理仿真，不是 AI。\\
+29 & 训练深度学习模型完成图像目标检测 & 3 & 深度学习模型训练。\\
+30 & 负责大语言模型微调、推理优化和部署评估 & 3 & 大模型完整技术链条。\\
+31 & 构建推荐系统特征工程和机器学习排序模型 & 3 & 明确机器学习建模。\\
+32 & 销售人工智能摄像头并维护渠道客户 & 1 & AI 是产品背景，销售为主业。\\
+33 & 公司主营 AI 产品，本岗位负责发票审核和报销 & 0 & 公司 AI 与岗位无关，且未明示数字工具。\\
+34 & 负责门店客户接待、合同归档和日常沟通 & 0 & 没有明示数字技术。\\
+35 & 制定生产计划并协调物料和人员排班 & 0 & 没有明示数字技术。\\
+\bottomrule
+\end{longtable}
+\normalsize
+
+\section{常见错误清单}
+
+\begin{longtable}{C{0.8cm}L{6.0cm}L{7.2cm}}
+\toprule
+\rowcolor{navy}\color{white}\textbf{序} & \color{white}\textbf{错误做法} & \color{white}\textbf{正确做法}\\
+\midrule
+\endfirsthead
+\toprule
+\rowcolor{navy}\color{white}\textbf{序} & \color{white}\textbf{错误做法} & \color{white}\textbf{正确做法}\\
+\midrule
+\endhead
+1 & 看到“工程师”“技术员”就判 2。 & 查看是否明确软件、数据、系统、数字硬件、自动化或算法职责。\\
+2 & 看到“AI”“智能”就判 3。 & 确认 AI 是否属于该岗位核心模型工作，而非公司／产品／项目背景。\\
+3 & 把 \field{human_score} 当成独立主观评分。 & 先填角色和严格 AI，再按确定映射填分数。\\
+4 & 把 CAD、ERP、Office 的任何使用都判 2。 & 普通使用为 1；开发、运维、集成这些系统才为 2。\\
+5 & 把所有“算法”“模型”判 3。 & 传统控制、通信、金融、统计、ISP、仿真算法为 2。\\
+6 & 因为岗位现实中肯定用电脑而加分。 & 只依据广告原文明示内容。\\
+7 & 把专业背景当成工作职责。 & “计算机专业优先”证据较弱；优先看具体动作和技能。\\
+8 & 复制两处不相邻证据并用符号拼接。 & I 列只放一段连续原文，第二处写到备注。\\
+9 & 证据写成自己的总结。 & 从 B、C 或 D 列直接复制。\\
+10 & 1-3 分不填证据。 & 正分证据为必填；否则无法导入。\\
+11 & 0 分也随便填一段“无技术”证据。 & 0 分 evidence 留空；原因可写 note。\\
+12 & 所有判断都填 high。 & 一处证据或有边界判断通常为 medium；信息不足为 low。\\
+13 & 修改 review\_id、排序或原文。 & A-D 列只读，不新增、删除或重排行。\\
+14 & 提前打开留出集并参考其内容。 & 现在只完成开发集；提示词冻结后再处理留出集。\\
+15 & 为了让各分数数量均衡而改判。 & 每行独立判断，真实分布不需要均衡。\\
+\bottomrule
+\end{longtable}
+
+\section{每行审核后的机械自检}
+
+完成每一行后，按顺序问：
+
+\begin{enumerate}[label=\textbf{检查 \arabic*.}]
+  \item A-D 列是否完全没动？
+  \item E、F、G、H 是否都已填写？
+  \item F、G、E 是否属于四种合法组合之一？
+  \item 若为 1-3 分，I 列是否非空？
+  \item I 列是否能在 B、C 或 D 的某一个单元格中逐字找到？
+  \item I 列是否是一段连续原文，而不是拼接或改写？
+  \item 若出现 AI 词，是否确认它是岗位核心技术职责，而不是背景？
+  \item 若判 2，是否明确说明为什么不是普通辅助使用或严格 AI？
+  \item 若置信度为 high，是否至少有两处一致明确证据？
+  \item 若存在边界歧义，J 列是否记录了理由？
+\end{enumerate}
+
+\begin{center}
+\noindent\begin{tabularx}{0.92\textwidth}{C{1.1cm}C{2.6cm}C{2.0cm}C{1.8cm}Y}
+\toprule
+分数 & \shortstack{technology\_\\role} & strict\_ai & evidence & 合法性\\
+\midrule
+0 & none & false & 空 & \yes 合法\\
+1 & auxiliary & false & 非空 & \yes 合法\\
+2 & core & false & 非空 & \yes 合法\\
+3 & core & true & 非空 & \yes 合法\\
+任意 & none／auxiliary & true & 任意 & \no 非法\\
+任意 & 与分数不对应 & 任意 & 任意 & \no 非法\\
+1-3 & 任意 & 任意 & 空 & \no 非法\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{保存、交付和后续流程}
+
+\begin{enumerate}
+  \item 只编辑 \texttt{blind\_development.xlsx} 的黄色区域，不改文件结构。
+  \item 建议每完成 10-15 行保存一次，避免意外丢失。
+  \item 完成 60 行后，用上一节清单进行完整自检。
+  \item 保持原文件名或另存为 \texttt{blind\_development\_completed.xlsx}。
+  \item 把完成后的开发集交回项目，不要同时提交留出集。
+  \item 程序会验证字段完整性、分数映射和证据连续性；如有错误，会按 \field{review_id} 精确指出。
+  \item 开发集用于最多 3 轮提示词优化。提示词冻结并提交后，才会通知你填写锁定留出集。
+\end{enumerate}
+
+\begin{warningbox}[遇到实在无法判断的行怎么办]
+仍然必须给出最符合原文的分数和结构化字段，同时把 \field{human_confidence} 设为 \texttt{low}，并在 \field{human_note} 中写清楚你纠结的两个等级及原因。不要跳过，不要凭行业常识补写原文没有的信息。
+\end{warningbox}
+
+\section{最终提交前总检查表}
+
+\begin{itemize}[label=$\square$]
+  \item 60 行全部完成；没有新增、删除或移动行。
+  \item 所有 \field{review_id} 与原文件一致。
+  \item 每行 E、F、G、H 均非空。
+  \item 所有分数都是 0、1、2、3 中的整数。
+  \item 所有组合严格符合：0/none/false；1/auxiliary/false；2/core/false；3/core/true。
+  \item 每条 1-3 分记录都有连续原文证据。
+  \item 所有 0 分记录的 evidence 为空。
+  \item 没有在 evidence 中写总结、拼接短语或补充原文不存在的文字。
+  \item 技术售前、测试、专业软件、数据分析、传统算法和 AI 协调均按本手册边界处理。
+  \item 没有因为公司、行业、年份或岗位惯例而猜测加分。
+  \item 没有查看或填写锁定留出集。
+  \item 文件已保存并能正常重新打开。
+\end{itemize}
+
+\appendix
+\section{字段值速查}
+
+\noindent\begin{tabularx}{\textwidth}{L{3.5cm}L{3.0cm}Y}
+\toprule
+字段 & 允许值 & 说明\\
+\midrule
+\field{human_score} & 0／1／2／3 & 由两个维度确定\\
+\field{technology_role} & none／auxiliary／core & 无／辅助／核心\\
+\field{strict_ai} & false／true & 只有 core 才能 true\\
+\field{human_confidence} & high／medium／low & 证据清晰度\\
+\field{human_evidence} & 原文连续短语 & 1-3 分必填，0 分留空\\
+\field{human_note} & 自由文本 & 可选，建议写边界理由\\
+\bottomrule
+\end{tabularx}
+
+\section{规范依据与版本控制}
+
+本手册严格依据项目中已冻结的以下文件编写：
+
+\begin{itemize}
+  \item \texttt{config/ai\_rubric\_v2\_1.yaml}：v2.1 构念、量表和边界；
+  \item \texttt{config/llm\_v2\_1\_boundary\_cases.yaml}：35 条合成边界回归用例；
+  \item \texttt{artifacts/evals/llm\_v2\_1/eval\_definition.md}：开发集／留出集评测纪律；
+  \item \texttt{artifacts/evals/llm\_v2\_1/blind\_development.xlsx}：当前人工盲审开发集。
+\end{itemize}
+
+本手册版本为 2.1.0。若未来修改“核心技术能力”口径、严格 AI 定义或维度映射，必须升级规范版本并重新生成相关评测产物，不能静默改口径。
+
+\vfill
+\begin{center}
+\color{graytext}
+\rule{0.72\textwidth}{0.4pt}\\[0.4em]
+先判断角色，再判断严格 AI，最后映射分数；只相信原文，不猜测。
+\end{center}
+
+\end{document}
