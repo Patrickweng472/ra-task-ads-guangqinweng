@@ -14,6 +14,10 @@ def test_committed_outputs_verify_when_present() -> None:
         assert result["status"] == "PASS"
 
 
+def test_v2_1_is_formal_without_additional_release_gate() -> None:
+    assert pipeline.determine_release_status("2.1.0") == "formal"
+
+
 def test_adjudication_replaces_score_and_explanation_atomically() -> None:
     primary = pd.DataFrame([{"canonical_id": "1", "score": 1, "evidence": "系统", "reason": "主编码", "confidence": "medium", "label_status": "llm_primary"}])
     comparison = pd.DataFrame([{"canonical_id": "1", "audit_score": 3}])
