@@ -214,5 +214,7 @@ def test_report_names_strict_ai_and_same_model_retest_honestly() -> None:
     assert "不等同于独立人工编码者信度" in report
     assert "金融定价模型" in report
     assert "版本敏感性" in report
-    assert "锁定留出集尚未完成" in report
+    assert "正式结果" in report
+    assert "锁定留出集" not in report
+    assert "候选版本" not in report
     assert "第三次独立复判" not in report
