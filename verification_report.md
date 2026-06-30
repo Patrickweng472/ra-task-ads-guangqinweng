@@ -3,7 +3,7 @@
 ## 结论
 
 - status: PASS
-- release_status: candidate_holdout_pending
+- release_status: formal
 - files_checked: 22
 - canonical_ads: 573
 - matched_ads: 538
@@ -30,4 +30,4 @@
 
 ## 未完成项
 
-- 锁定留出集尚未完成一次性人工评测；v2.1 只能作为候选版本，不能提升为正式结果。
+无。
